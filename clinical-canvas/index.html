@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Edytowalne algorytmy diagnostyczne głównych objawów, osobno dla dorosłych i dzieci. Wywiad, badanie, czerwone flagi i źródła."
+    />
+    <meta name="theme-color" content="#164c4b" />
+    <title>Clinical Canvas · Algorytmy objawowe</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="clinical-data.js"></script>
+    <script>window.__API_BASE__ = "__PORT_8765__";</script>
+    <script defer src="storage-adapter.js"></script>
+    <script defer src="score-engine.js"></script>
+    <script defer src="app.js"></script>
+    <script defer src="calculators.js"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="identity">
+        <strong>Clinical Canvas</strong
+        ><span>Atlas decyzji klinicznych <b>v2.1</b></span>
+      </div>
+      <div class="top-actions">
+        <button id="calculators" class="primary">Kalkulatory</button>
+        <button id="theme" aria-label="Zmień motyw">Motyw</button>
+        <button id="sources">Źródła</button>
+        <button id="export">Eksport JSON</button>
+        <button id="import">Import</button>
+        <button id="reload-state">Wczytaj zapis</button>
+        <button id="help" aria-label="Instrukcja obsługi">?</button>
+      </div>
+    </header>
+    <div class="workspace">
+      <aside class="sidebar" aria-label="Moduły kliniczne">
+        <div class="side-heading">
+          Biblioteka ścieżek <span id="module-count"></span>
+        </div>
+        <label class="search-label" for="search"
+          >Znajdź objaw, badanie lub pułapkę</label
+        >
+        <input
+          id="search"
+          type="search"
+          placeholder="np. troponina, glikemia…"
+          autocomplete="off"
+        />
+        <nav id="modules" aria-label="Algorytmy"></nav>
+        <div class="side-note">
+          Wywiad → badanie → decyzja.<br />Badania zlecane ze wskazań, nie
+          „panel na wszelki wypadek”.
+        </div>
+        <button id="restore">Przywróć wersję bazową</button>
+      </aside>
+      <main class="main">
+        <section class="heading">
+          <div class="eyebrow" id="chapter"></div>
+          <h1 id="title">Algorytmy diagnostyczne</h1>
+          <p id="subtitle">Ładowanie biblioteki…</p>
+          <div class="scope-note">
+            Synteza edukacyjna, nie pełny protokół oddziałowy. Daty i
+            ograniczenia źródeł w szczegółach. Nie wpisuj danych pacjentów.
+          </div>
+        </section>
+        <section class="controls" aria-label="Narzędzia płótna">
+          <div class="segmented" id="cohorts" aria-label="Populacja">
+            <button data-cohort="a" aria-pressed="true">Dorośli</button>
+            <button data-cohort="p" aria-pressed="false">Dzieci</button>
+            <button data-cohort="all" aria-pressed="false">Obie ścieżki</button>
+          </div>
+          <div class="canvas-actions">
+            <button id="fit">Dopasuj</button>
+            <button id="toggle-canvas" aria-expanded="false">Pokaż płótno</button>
+            <button id="zoom-out" aria-label="Oddal">−</button
+            ><output id="zoom">100%</output
+            ><button id="zoom-in" aria-label="Przybliż">+</button>
+            <button id="undo" disabled aria-label="Cofnij">↶</button
+            ><button id="redo" disabled aria-label="Ponów">↷</button>
+            <button id="add" class="primary">+ Węzeł</button>
+          </div>
+        </section>
+        <div class="stage-layout">
+          <div class="stage-column">
+            <div id="stage" aria-label="Interaktywne płótno">
+              <svg
+                id="canvas"
+                role="img"
+                aria-labelledby="graph-title graph-desc"
+              >
+                <title id="graph-title">Diagnostyczne drzewo decyzji</title>
+                <desc id="graph-desc">
+                  Połączone węzły diagnostyczne. Alternatywna nawigacja
+                  klawiaturą znajduje się na liście kroków pod płótnem.
+                </desc>
+                <defs>
+                  <marker
+                    id="arrow"
+                    viewBox="0 0 10 10"
+                    refX="9"
+                    refY="5"
+                    markerWidth="6"
+                    markerHeight="6"
+                    orient="auto"
+                  >
+                    <path
+                      d="M0 1L9 5L0 9"
+                      fill="none"
+                      stroke="context-stroke"
+                      stroke-width="1.6"
+                    />
+                  </marker>
+                </defs>
+                <g id="viewport"></g>
+              </svg>
+              <div class="canvas-caption">
+                <span
+                  >Przeciągnij tło · scroll: zoom · kliknij krok:
+                  szczegóły</span
+                ><span id="node-count"></span>
+              </div>
+            </div>
+            <details class="step-list" open>
+              <summary>
+                Kroki algorytmu <span>alternatywa dla płótna</span>
+              </summary>
+              <div id="steps"></div>
+            </details>
+          </div>
+          <aside
+            id="details"
+            class="details"
+            aria-label="Szczegóły kroku"
+          ></aside>
+        </div>
+        <footer class="statusbar">
+          <div class="legend">
+            <span>■ Ocena</span><span class="decision">◇ Decyzja</span
+            ><span class="danger">■ Pilna eskalacja</span
+            ><span class="test">■ Diagnostyka</span>
+          </div>
+          <span id="save-state">Łączenie z zapisem…</span>
+        </footer>
+      </main>
+    </div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <dialog id="dialog" aria-labelledby="dialog-title">
+      <div id="dialog-content"></div>
+      <form method="dialog"><button>Zamknij</button></form>
+    </dialog>
+    <dialog id="calc-dialog" aria-labelledby="calc-title" aria-describedby="calc-description">
+      <header class="calc-header">
+        <div><div class="calc-kicker">Narzędzia oceny · v2.1</div><h2 id="calc-title">Kalkulatory kliniczne</h2></div>
+        <button id="calc-close" aria-label="Zamknij kalkulatory">Zamknij</button>
+      </header>
+      <div class="calc-tabs" role="tablist" aria-label="Wybierz skalę">
+        <button id="calc-tab-gcs" role="tab" data-calculator="gcs" aria-controls="calc-panel" aria-selected="true">GCS</button>
+        <button id="calc-tab-news2" role="tab" data-calculator="news2" aria-controls="calc-panel" aria-selected="false" tabindex="-1">NEWS2</button>
+        <button id="calc-tab-pews" role="tab" data-calculator="pews" aria-controls="calc-panel" aria-selected="false" tabindex="-1">Brighton PEWS</button>
+      </div>
+      <p id="calc-description"></p>
+      <div id="calc-panel" role="tabpanel" aria-labelledby="calc-tab-gcs" class="calc-layout">
+        <form id="calc-form" aria-label="Parametry kalkulatora" novalidate></form>
+        <aside id="calc-result" class="calc-result" aria-label="Wynik i interpretacja">
+          <div id="calc-result-name" class="calc-kicker"></div>
+          <div class="calc-number"><output id="calc-value">—</output><span id="calc-max"></span></div>
+          <h3 id="calc-verdict">Uzupełnij ocenę</h3>
+          <div id="calc-output"></div>
+          <button id="calc-insert" class="primary" disabled>Wstaw wynik do płótna</button>
+          <p class="calc-help">Formularz nie zapisuje się automatycznie. Wstawienie tworzy własny, zapisywany i eksportowany węzeł w aktualnym module i populacji zgodnej z kalkulatorem. Bez danych identyfikujących pacjentów.</p>
+          <div class="calc-sources"><h4>Źródła i wariant</h4><div id="calc-references"></div><p class="calc-help">Reguły sprawdzone dla tej implementacji: 01.11.2026. Data nie oznacza publikacji nowej wytycznej. Obliczenia nie zastępują oceny klinicznej i trendu.</p></div>
+        </aside>
+      </div>
+      <div id="calc-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+    </dialog>
+    <input
+      id="import-file"
+      type="file"
+      accept=".json,application/json"
+      hidden
+    />
+  </body>
+</html>

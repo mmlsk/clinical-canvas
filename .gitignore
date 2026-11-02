@@ -1,0 +1,25 @@
+# Local persistence, never part of the source repository
+clinical-runtime/
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+
+# Credentials and environment overrides
+.env
+.env.*
+!.env.example
+
+# Runtime and tool artifacts
+__pycache__/
+*.py[cod]
+*.log
+.venv/
+venv/
+node_modules/
+.DS_Store
+
+# Generated single-file build
+/makieta-medyczna-canvas.html
