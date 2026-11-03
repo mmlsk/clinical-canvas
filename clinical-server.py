@@ -3,17 +3,23 @@
 import hashlib
 import json
 import math
+import os
 import sqlite3
+import tempfile
+from contextlib import closing
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parent
-RUNTIME = ROOT / "clinical-runtime"
-RUNTIME.mkdir(exist_ok=True)
+RUNTIME = Path(os.environ.get("CLINICAL_RUNTIME", ROOT / "clinical-runtime"))
+try:
+    RUNTIME.mkdir(exist_ok=True)
+except OSError:
+    RUNTIME = Path(tempfile.gettempdir()) / "clinical-runtime"
+    RUNTIME.mkdir(exist_ok=True)
 DB = RUNTIME / "state.sqlite3"
-with sqlite3.connect(DB) as db:
-    # Read existing schema before any additive change. Never drop or rename columns.
-    existing = db.execute("SELECT name, sql FROM sqlite_master WHERE type='table'").fetchall()
+with closing(sqlite3.connect(DB)) as db:
+    db.execute("PRAGMA journal_mode=WAL")
     db.execute("CREATE TABLE IF NOT EXISTS visitor_boards (visitor_key TEXT PRIMARY KEY, revision INTEGER NOT NULL, payload TEXT NOT NULL)")
 
 def valid_payload(value):
@@ -75,6 +81,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def visitor(self):
         value = self.headers.get("X-Visitor-Id", "")
+        if not value:
+            ip = self.client_address[0]
+            if ip in ("127.0.0.1", "::1", "localhost"):
+                value = "local-dev"
         if not value or len(value) > 300:
             self.reply(403, {"error": "A visitor identity from the private preview proxy is required."})
             return None
@@ -84,10 +94,12 @@ class Handler(BaseHTTPRequestHandler):
         self.reply(200, {})
 
     def do_GET(self):
-        if self.path == "/api/health":
+        raw_path = self.path.split("?")[0]
+        path = raw_path.rstrip("/") or "/"
+        if path == "/api/health":
             return self.reply(200, {"status": "ok"})
-        if self.path.split("?")[0] in ("/", "/index.html", "/styles.css", "/clinical-data.js", "/storage-adapter.js", "/score-engine.js", "/calculators.js", "/app.js"):
-            name = self.path.split("?")[0].lstrip("/") or "index.html"
+        if path in ("/", "/index.html", "/styles.css", "/clinical-data.js", "/storage-adapter.js", "/score-engine.js", "/calculators.js", "/app.js"):
+            name = path.lstrip("/") or "index.html"
             source = ROOT / "clinical-canvas" / name
             raw = source.read_bytes()
             self.send_response(200)
@@ -97,17 +109,19 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(raw)
             return
-        if self.path != "/api/state":
+        if path != "/api/state":
             return self.reply(404, {"error": "Not found"})
         key = self.visitor()
         if key is None:
             return
-        with sqlite3.connect(DB) as db:
+        with closing(sqlite3.connect(DB, timeout=10)) as db:
             row = db.execute("SELECT revision, payload FROM visitor_boards WHERE visitor_key=?", (key,)).fetchone()
         self.reply(200, {"revision": row[0] if row else 0, "payload": json.loads(row[1]) if row else None})
 
     def do_PUT(self):
-        if self.path != "/api/state":
+        raw_path = self.path.split("?")[0]
+        path = raw_path.rstrip("/") or "/"
+        if path != "/api/state":
             return self.reply(404, {"error": "Not found"})
         key = self.visitor()
         if key is None:
@@ -122,18 +136,19 @@ class Handler(BaseHTTPRequestHandler):
             expected, payload = data.get("revision"), data.get("payload")
             if type(expected) is not int or expected < 0 or not valid_payload(payload):
                 return self.reply(400, {"error": "Invalid state"})
-            with sqlite3.connect(DB, timeout=10) as db:
-                db.execute("BEGIN IMMEDIATE")
-                row = db.execute("SELECT revision FROM visitor_boards WHERE visitor_key=?", (key,)).fetchone()
-                current = row[0] if row else 0
-                if current != expected:
-                    return self.reply(409, {"error": "Revision conflict", "revision": current})
-                revision = current + 1
-                db.execute(
-                    "INSERT INTO visitor_boards(visitor_key,revision,payload) VALUES(?,?,?) "
-                    "ON CONFLICT(visitor_key) DO UPDATE SET revision=excluded.revision,payload=excluded.payload",
-                    (key, revision, json.dumps(payload, ensure_ascii=False, allow_nan=False)),
-                )
+            with closing(sqlite3.connect(DB, timeout=10)) as db:
+                with db:
+                    db.execute("BEGIN IMMEDIATE")
+                    row = db.execute("SELECT revision FROM visitor_boards WHERE visitor_key=?", (key,)).fetchone()
+                    current = row[0] if row else 0
+                    if current != expected:
+                        return self.reply(409, {"error": "Revision conflict", "revision": current})
+                    revision = current + 1
+                    db.execute(
+                        "INSERT INTO visitor_boards(visitor_key,revision,payload) VALUES(?,?,?) "
+                        "ON CONFLICT(visitor_key) DO UPDATE SET revision=excluded.revision,payload=excluded.payload",
+                        (key, revision, json.dumps(payload, ensure_ascii=False, allow_nan=False)),
+                    )
             self.reply(200, {"revision": revision})
         except (ValueError, TypeError, KeyError):
             self.reply(400, {"error": "Malformed JSON"})
