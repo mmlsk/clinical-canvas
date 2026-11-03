@@ -250,3 +250,42 @@ test("mergeWithDefaults(): merges customized graphs over baseline defaults", () 
   // overview.a should remain original default
   assert.equal(merged.graphs["overview.a"].nodes.length, 7);
 });
+
+test("canvas keyboard navigation: Tab/Shift+Tab node cycling logic", () => {
+  const g = M.defaults().graphs["chest.a"];
+  const nodes = g.nodes;
+  assert.equal(nodes.length, 7);
+
+  // When no node is selected (-1), Tab selects 0, Shift+Tab selects last (6)
+  const tabFromNone = (currentIndex, shift) =>
+    currentIndex === -1 ? (shift ? nodes.length - 1 : 0) : (currentIndex + (shift ? -1 : 1) + nodes.length) % nodes.length;
+
+  assert.equal(tabFromNone(-1, false), 0);
+  assert.equal(tabFromNone(-1, true), 6);
+
+  // Cycling forward
+  let idx = 0;
+  for (let i = 1; i <= 7; i++) {
+    idx = tabFromNone(idx, false);
+    assert.equal(idx, i % 7);
+  }
+
+  // Cycling backward
+  idx = 0;
+  assert.equal(tabFromNone(idx, true), 6);
+  assert.equal(tabFromNone(6, true), 5);
+});
+
+test("canvas keyboard navigation: Arrow nudging step and boundary limits", () => {
+  const nudge = (coord, delta) => Math.max(-50000, Math.min(50000, coord + delta));
+
+  // Normal step 16px, Shift step 64px
+  assert.equal(nudge(100, 16), 116);
+  assert.equal(nudge(100, -16), 84);
+  assert.equal(nudge(100, 64), 164);
+  assert.equal(nudge(100, -64), 36);
+
+  // Boundary clamping
+  assert.equal(nudge(49980, 64), 50000);
+  assert.equal(nudge(-49980, -64), -50000);
+});

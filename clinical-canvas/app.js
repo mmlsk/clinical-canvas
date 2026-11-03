@@ -740,35 +740,8 @@
     }
     if (action === "child") addNode(selected.id);
     if (action === "link") linkDialog();
-    if (action === "delete") {
-      const info = selectedInfo();
-      if (!info) return;
-      confirmAction(
-        "Usunąć krok?",
-        `„${info.n.title}” i wszystkie jego połączenia zostaną usunięte. Możesz cofnąć tę operację.`,
-        () => {
-          checkpoint();
-          info.g.nodes = info.g.nodes.filter((n) => n.id !== info.n.id);
-          info.g.edges = info.g.edges.filter(
-            (e) => e.from !== info.n.id && e.to !== info.n.id,
-          );
-          selected = null;
-          editing = false;
-          draw();
-          renderPanel();
-          schedule();
-        },
-      );
-    }
-    if (action === "delete-edge") {
-      checkpoint();
-      for (const g of Object.values(store.graphs))
-        g.edges = g.edges.filter((e) => e.id !== selected.id);
-      selected = null;
-      draw();
-      renderPanel();
-      schedule();
-    }
+    if (action === "delete") deleteSelectedNode();
+    if (action === "delete-edge") deleteSelectedEdge();
   });
   $("modules").addEventListener("click", (ev) => {
     const button = ev.target.closest("[data-module]");
@@ -1065,6 +1038,36 @@
     },
     { passive: false },
   );
+  function deleteSelectedNode() {
+    const info = selectedInfo();
+    if (!info) return;
+    confirmAction(
+      "Usunąć krok?",
+      `„${info.n.title}” i wszystkie jego połączenia zostaną usunięte. Możesz cofnąć tę operację.`,
+      () => {
+        checkpoint();
+        info.g.nodes = info.g.nodes.filter((n) => n.id !== info.n.id);
+        info.g.edges = info.g.edges.filter(
+          (e) => e.from !== info.n.id && e.to !== info.n.id,
+        );
+        selected = null;
+        editing = false;
+        draw();
+        renderPanel();
+        schedule();
+      },
+    );
+  }
+  function deleteSelectedEdge() {
+    if (selected?.kind !== "edge") return;
+    checkpoint();
+    for (const g of Object.values(store.graphs))
+      g.edges = g.edges.filter((e) => e.id !== selected.id);
+    selected = null;
+    draw();
+    renderPanel();
+    schedule();
+  }
   window.addEventListener("keydown", (ev) => {
     if (ev.target.closest("input,textarea,select") || $("dialog").open || $("calc-dialog").open) return;
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "z") {
@@ -1076,6 +1079,42 @@
       selected = null;
       draw();
       renderPanel();
+    }
+    if (ev.key === "Delete" || ev.key === "Backspace") {
+      if (selected?.kind === "edge") {
+        ev.preventDefault();
+        deleteSelectedEdge();
+      } else if (selected?.kind === "node") {
+        ev.preventDefault();
+        deleteSelectedNode();
+      }
+    }
+    if (ev.key === "Tab") {
+      const g = visibleGraphs()[0];
+      if (g && g.nodes.length) {
+        ev.preventDefault();
+        const currentIndex = selected?.kind === "node" ? g.nodes.findIndex((n) => n.id === selected.id) : -1;
+        const nextIndex = currentIndex === -1
+          ? (ev.shiftKey ? g.nodes.length - 1 : 0)
+          : (currentIndex + (ev.shiftKey ? -1 : 1) + g.nodes.length) % g.nodes.length;
+        selectNode(g.nodes[nextIndex].id);
+      }
+    }
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(ev.key)) {
+      if (selected?.kind === "node") {
+        const info = selectedInfo();
+        if (info) {
+          ev.preventDefault();
+          const step = ev.shiftKey ? 64 : 16;
+          const dx = ev.key === "ArrowLeft" ? -step : ev.key === "ArrowRight" ? step : 0;
+          const dy = ev.key === "ArrowUp" ? -step : ev.key === "ArrowDown" ? step : 0;
+          checkpoint();
+          info.n.x = Math.max(-50000, Math.min(50000, info.n.x + dx));
+          info.n.y = Math.max(-50000, Math.min(50000, info.n.y + dy));
+          draw();
+          schedule();
+        }
+      }
     }
   });
   $("theme").onclick = () => {
@@ -1105,7 +1144,7 @@
   $("help").onclick = () =>
     showDialog(
       "Jak pracować na płótnie",
-      `<ul><li>Wybierz objaw i populację. Obie ścieżki można porównać, lecz nie są jednym algorytmem dawkowania.</li><li>Przeciągnij tło, zmień zoom lub dopasuj widok. Kliknij krok albo wybierz go z listy pod płótnem.</li><li>W szczegółach przejdź do edycji. Zmiana nie traci fokusu i oznacza treść jako własną.</li><li>Dodaj gałąź, skalę lub pusty węzeł. Połącz kontrolką „Połącz” w edytorze albo przeciągnij port do drugiego węzła.</li><li>Cofnij/ponów; Ctrl/Cmd+Z poza polem tekstowym. Eksport JSON to przenośna kopia.</li><li>W podglądzie zapis działa na serwerze i jest oddzielny dla odwiedzającego. SQLite i serwer są częścią środowiska podglądowego, nie usługą produkcyjną z gwarancją trwałości. Zachowuj eksporty JSON.</li><li>Wersja samodzielna zapisuje lokalnie. Brak współedycji na żywo i synchronizacji między urządzeniami. Przy konflikcie kart wyeksportuj zmiany i użyj „Wczytaj zapis”. Nie wpisuj danych pacjentów.</li><li>Import starego JSON tworzy osobne archiwum i nie zastępuje nowych ścieżek. Archiwum kliniczne wymaga ponownej weryfikacji.</li></ul>`,
+      `<ul><li>Wybierz objaw i populację. Obie ścieżki można porównać, lecz nie są jednym algorytmem dawkowania.</li><li>Przeciągnij tło, zmień zoom lub dopasuj widok. Kliknij krok albo wybierz go z listy pod płótnem.</li><li>Skróty klawiszowe płótna: <b>Tab / Shift+Tab</b> przełącza po kolei kroki ścieżki; <b>Strzałki</b> (lub <b>Shift+Strzałki</b>) precyzyjnie przesuwają zaznaczony krok (16px / 64px); <b>Delete / Backspace</b> usuwa zaznaczone połączenie lub krok (z potwierdzeniem); <b>Escape</b> cofa zaznaczenie; <b>Ctrl/Cmd+Z</b> cofa/ponawia edycje.</li><li>W szczegółach przejdź do edycji. Zmiana nie traci fokusu i oznacza treść jako własną.</li><li>Dodaj gałąź, skalę lub pusty węzeł. Połącz kontrolką „Połącz” w edytorze albo przeciągnij port do drugiego węzła.</li><li>Cofnij/ponów; Ctrl/Cmd+Z poza polem tekstowym. Eksport JSON to przenośna kopia.</li><li>W podglądzie zapis działa na serwerze i jest oddzielny dla odwiedzającego. SQLite i serwer są częścią środowiska podglądowego, nie usługą produkcyjną z gwarancją trwałości. Zachowuj eksporty JSON.</li><li>Wersja samodzielna zapisuje lokalnie. Brak współedycji na żywo i synchronizacji między urządzeniami. Przy konflikcie kart wyeksportuj zmiany i użyj „Wczytaj zapis”. Nie wpisuj danych pacjentów.</li><li>Import starego JSON tworzy osobne archiwum i nie zastępuje nowych ścieżek. Archiwum kliniczne wymaga ponownej weryfikacji.</li></ul>`,
     );
   $("export").onclick = () => {
     const blob = new Blob([JSON.stringify(store, null, 2)], {
