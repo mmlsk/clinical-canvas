@@ -1146,18 +1146,158 @@
       "Jak pracować na płótnie",
       `<ul><li>Wybierz objaw i populację. Obie ścieżki można porównać, lecz nie są jednym algorytmem dawkowania.</li><li>Przeciągnij tło, zmień zoom lub dopasuj widok. Kliknij krok albo wybierz go z listy pod płótnem.</li><li>Skróty klawiszowe płótna: <b>Tab / Shift+Tab</b> przełącza po kolei kroki ścieżki; <b>Strzałki</b> (lub <b>Shift+Strzałki</b>) precyzyjnie przesuwają zaznaczony krok (16px / 64px); <b>Delete / Backspace</b> usuwa zaznaczone połączenie lub krok (z potwierdzeniem); <b>Escape</b> cofa zaznaczenie; <b>Ctrl/Cmd+Z</b> cofa/ponawia edycje.</li><li>W szczegółach przejdź do edycji. Zmiana nie traci fokusu i oznacza treść jako własną.</li><li>Dodaj gałąź, skalę lub pusty węzeł. Połącz kontrolką „Połącz” w edytorze albo przeciągnij port do drugiego węzła.</li><li>Cofnij/ponów; Ctrl/Cmd+Z poza polem tekstowym. Eksport JSON to przenośna kopia.</li><li>W podglądzie zapis działa na serwerze i jest oddzielny dla odwiedzającego. SQLite i serwer są częścią środowiska podglądowego, nie usługą produkcyjną z gwarancją trwałości. Zachowuj eksporty JSON.</li><li>Wersja samodzielna zapisuje lokalnie. Brak współedycji na żywo i synchronizacji między urządzeniami. Przy konflikcie kart wyeksportuj zmiany i użyj „Wczytaj zapis”. Nie wpisuj danych pacjentów.</li><li>Import starego JSON tworzy osobne archiwum i nie zastępuje nowych ścieżek. Archiwum kliniczne wymaga ponownej weryfikacji.</li></ul>`,
     );
-  $("export").onclick = () => {
-    const blob = new Blob([JSON.stringify(store, null, 2)], {
-        type: "application/json",
-      }),
-      url = URL.createObjectURL(blob),
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob),
       a = document.createElement("a");
     a.href = url;
-    a.download = "clinical-canvas-v2.json";
+    a.download = filename;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 10000);
-    toast("Przygotowano kopię JSON.");
-  };
+  }
+  function buildExportSvg() {
+    const graphs = visibleGraphs();
+    const allNodes = graphs.flatMap((g, i) =>
+      g.nodes.map((n) => ({ ...n, x: n.x + i * 900 })),
+    );
+    if (!allNodes.length) return null;
+    const minX = Math.min(...allNodes.map((n) => n.x));
+    const maxX = Math.max(...allNodes.map((n) => n.x + W));
+    const minY = Math.min(...allNodes.map((n) => n.y));
+    const maxY = Math.max(...allNodes.map((n) => n.y + H));
+    const pad = 40;
+    const headerHeight = 70;
+    const originX = minX - pad;
+    const originY = minY - pad - headerHeight;
+    const totalW = maxX - minX + pad * 2;
+    const totalH = maxY - minY + pad * 2 + headerHeight;
+
+    const mod = D.modules.find((m) => m.id === active) || { title: "Algorytm kliniczny" };
+    const cohortLabel = cohort === "a" ? "DOROŚLI" : cohort === "p" ? "DZIECI" : "DOROŚLI I DZIECI";
+
+    const clone = viewport.cloneNode(true);
+    clone.removeAttribute("transform");
+    clone.querySelectorAll(".port, .edge-hit").forEach((el) => el.remove());
+    clone.querySelectorAll(".selected").forEach((el) => el.classList.remove("selected"));
+    clone.querySelectorAll(".dim").forEach((el) => el.classList.remove("dim"));
+    clone.querySelectorAll(".match").forEach((el) => el.classList.remove("match"));
+
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${originX} ${originY} ${totalW} ${totalH}" width="${totalW}" height="${totalH}">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 1L9 5L0 9" fill="none" stroke="#839c99" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+    </marker>
+  </defs>
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .bg { fill: #ffffff; }
+    .doc-title { font-size: 22px; font-weight: 700; fill: #166260; }
+    .doc-sub { font-size: 13px; fill: #536a6c; }
+    .node .body { fill: #ffffff; stroke: #b9cbca; stroke-width: 1.2px; }
+    .node .bar { fill: #166260; }
+    .node[data-type="decision"] .bar { fill: #896027; }
+    .node[data-type="urgent"] .bar { fill: #9e322d; }
+    .node[data-type="urgent"] .body { stroke: #9e322d; stroke-width: 1.5px; }
+    .node[data-type="test"] .bar { fill: #355e90; }
+    .node[data-type="treatment"] .bar { fill: #166260; }
+    .node[data-type="scale"] .bar { fill: #6366f1; }
+    .node[data-type="note"] .bar { fill: #64748b; }
+    .node-type { fill: #536a6c; font-size: 11px; font-weight: 600; letter-spacing: 0.7px; text-transform: uppercase; }
+    .node-text { fill: #182e30; font-size: 14px; font-weight: 600; }
+    .node-sub { fill: #536a6c; font-size: 11px; }
+    .edge { fill: none; stroke: #839c99; stroke-width: 1.6px; marker-end: url(#arrow); }
+    .edge-mask { fill: #ffffff; stroke: #d5e0df; stroke-width: 1px; }
+    .edge-label { fill: #536a6c; font-size: 11px; font-weight: 500; }
+  </style>
+  <rect class="bg" x="${originX}" y="${originY}" width="${totalW}" height="${totalH}" />
+  <g class="header-banner">
+    <text class="doc-title" x="${minX}" y="${minY - headerHeight + 28}">${escape(mod.title)}</text>
+    <text class="doc-sub" x="${minX}" y="${minY - headerHeight + 50}">Populacja: ${escape(cohortLabel)} · Clinical Canvas v2</text>
+  </g>
+  ${clone.innerHTML}
+</svg>`;
+  }
+  function exportImage(format = "png") {
+    const svgString = buildExportSvg();
+    if (!svgString) {
+      toast("Brak widocznych kroków do eksportu.");
+      return;
+    }
+    const filename = `clinical-canvas-${active}-${cohort}`;
+    if (format === "svg") {
+      const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      downloadBlob(blob, `${filename}.svg`);
+      toast("Wyeksportowano grafikę SVG.");
+      return;
+    }
+    const blob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const scale = 2;
+      canvas.width = (img.naturalWidth || img.width) * scale;
+      canvas.height = (img.naturalHeight || img.height) * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((pngBlob) => {
+        if (pngBlob) {
+          downloadBlob(pngBlob, `${filename}.png`);
+          toast("Wyeksportowano grafikę PNG (2x).");
+        }
+      }, "image/png");
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      toast("Nie udało się wyrenderować PNG.");
+    };
+    img.src = url;
+  }
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(store, null, 2)], {
+      type: "application/json",
+    });
+    downloadBlob(blob, "clinical-canvas-v2.json");
+    toast("Pobrano kopię JSON.");
+  }
+  function showExportDialog() {
+    const mod = D.modules.find((m) => m.id === active) || { title: "Algorytm kliniczny" };
+    const cohortLabel = cohort === "a" ? "Dorośli" : cohort === "p" ? "Dzieci" : "Dorośli i dzieci";
+    showDialog(
+      "Eksport algorytmu",
+      `<p class="dialog-meta">Bieżący widok: <b>${escape(mod.title)}</b> (${escape(cohortLabel)})</p>
+      <div class="export-options">
+        <button id="export-svg" class="export-option-btn">
+          <span class="export-format">Wektorowy SVG (.svg)</span>
+          <span class="export-desc">Zachowuje 100% ostrości w dowolnym powiększeniu; idealny do prezentacji i publikacji wektorowej.</span>
+        </button>
+        <button id="export-png" class="export-option-btn primary">
+          <span class="export-format">Wysoka rozdzielczość PNG (.png)</span>
+          <span class="export-desc">Raster 2× Retina z czystym białym tłem — gotowy do druku, dokumentacji i materiałów edukacyjnych.</span>
+        </button>
+        <button id="export-json" class="export-option-btn">
+          <span class="export-format">Kopia danych JSON (.json)</span>
+          <span class="export-desc">Pełna edytowalna kopia wszystkich ścieżek z możliwością ponownego zaimportowania.</span>
+        </button>
+      </div>`,
+    );
+    $("export-svg").onclick = () => {
+      $("dialog").close();
+      exportImage("svg");
+    };
+    $("export-png").onclick = () => {
+      $("dialog").close();
+      exportImage("png");
+    };
+    $("export-json").onclick = () => {
+      $("dialog").close();
+      exportJson();
+    };
+  }
+  $("export").onclick = () => showExportDialog();
   $("import").onclick = () => $("import-file").click();
   $("import-file").addEventListener("change", async (ev) => {
     const file = ev.target.files[0];
