@@ -14,9 +14,13 @@
       ["BTS Guidelines for the Management of CAP in Adults (2009 update)", "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/pneumonia-adults/"],
       ["NICE NG138 · Pneumonia (community-acquired)", "https://www.nice.org.uk/guidance/ng138"],
     ],
+    qsofa: [
+      ["Sepsis-3 Consensus Definitions (JAMA 2016)", "https://jamanetwork.com/journals/jama/fullarticle/2492881"],
+      ["Surviving Sepsis Campaign Guidelines 2021", "https://www.sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-campaign-2021"],
+    ],
   };
-  const labels = { gcs:"GCS", news2:"NEWS2", pews:"Brighton PEWS", curb65:"CURB-65 / CRB-65" };
-  let active = "gcs", drafts = { gcs:{}, news2:{scale:"1"}, pews:{}, curb65:{population:"adult",variant:"curb65"} }, result = null;
+  const labels = { gcs:"GCS", news2:"NEWS2", pews:"Brighton PEWS", curb65:"CURB-65 / CRB-65", qsofa:"qSOFA" };
+  let active = "gcs", drafts = { gcs:{}, news2:{scale:"1"}, pews:{}, curb65:{population:"adult",variant:"curb65",ureaUnit:"mmol"}, qsofa:{population:"adult"} }, result = null;
   const options = (items, current) => '<option value="">Wybierz…</option>' + items.map(([v, label]) =>
     `<option value="${escape(v)}"${String(current ?? "") === String(v) ? " selected" : ""}>${escape(label)}</option>`).join("");
   function select(name, label, items, help = "") {
@@ -97,9 +101,10 @@
       yesNo("bronchodilators","Leki rozszerzające oskrzela co 20 minut") +
       yesNo("postopVomiting","Uporczywe wymioty po operacji") + "</fieldset>" +
       '<p class="calc-note">Nie utożsamiaj przepływu l/min ze stałą FiO₂: zależy ona od urządzenia, szczelności i wentylacji. Zachowano kryteria wskazanego wariantu, bez mieszania z innymi tabelami PEWS.</p>';
-    } else {
-      $("calc-description").textContent = "Ocena ciężkości pozaszpitalnego zapalenia płuc (CAP) u dorosłych: CURB-65 (ze stężeniem mocznika) lub CRB-65 (ocena pozaszpitalna).";
+    } else if (active === "curb65") {
+      $("calc-description").textContent = "Ocena ciężkości pozaszpitalnego zapalenia płuc (CAP) u dorosłych: CURB-65 (ze stężeniem mocznika / BUN) lub CRB-65 (ocena pozaszpitalna).";
       const isCrb = drafts.curb65.variant === "crb65";
+      const isMgdl = drafts.curb65.ureaUnit === "mgdl";
       form.innerHTML = select("population", "Zakres zastosowania", [
         ["adult","Osoba dorosła (≥18 lat) z zapaleniem płuc"],["child","Dziecko <18 lat (nie dotyczy)"],
       ]) +
@@ -109,7 +114,11 @@
       ]) +
       yesNo("confusion", "C · Nowo powstałe splątanie (AMTS ≤8 lub dezorientacja)") +
       `<div class="calc-field" id="curb-urea-wrap"${isCrb ? ' style="display:none"' : ""}>` +
-      number("urea", "U · Stężenie mocznika we krwi · mmol/l", 0.1, 100, 0.1) +
+      select("ureaUnit", "Jednostka stężenia mocznika", [
+        ["mmol", "mmol/l · stężenie mocznika (próg >7,0)"],
+        ["mgdl", "mg/dl · azot mocznikowy BUN (próg >19)"],
+      ]) +
+      number("urea", isMgdl ? "U · Azot mocznikowy (BUN) · mg/dl" : "U · Stężenie mocznika we krwi · mmol/l", isMgdl ? 1 : 0.1, isMgdl ? 300 : 100, isMgdl ? 1 : 0.1) +
       `</div>` +
       '<div class="calc-pair">' +
       number("rr", "R · Częstość oddechów / min", 0, 100) +
@@ -119,11 +128,26 @@
       number("sbp", "B · Ciśnienie skurczowe · mmHg", 0, 300) +
       number("dbp", "B · Ciśnienie rozkurczowe · mmHg", 0, 200) +
       '</div>' +
-      '<p class="calc-note">Kryteria punktowane (po 1 pkt): C (splątanie), U (mocznik >7 mmol/l), R (oddechy ≥30/min), B (ciśnienie: SBP <90 mmHg lub DBP ≤60 mmHg), 65 (wiek ≥65 lat). Skala służy stratyfikacji ryzyka zgonu w pozaszpitalnym zapaleniu płuc u dorosłych, nie zastępuje oceny klinicznej.</p>';
+      '<p class="calc-note">Kryteria punktowane (po 1 pkt): C (splątanie), U (mocznik >7 mmol/l lub BUN >19 mg/dl), R (oddechy ≥30/min), B (ciśnienie: SBP <90 mmHg lub DBP ≤60 mmHg), 65 (wiek ≥65 lat). Skala służy stratyfikacji ryzyka zgonu w pozaszpitalnym zapaleniu płuc u dorosłych, nie zastępuje oceny klinicznej.</p>';
+    } else {
+      $("calc-description").textContent = "Szybka przyłóżkowa ocena ryzyka sepsy (Sepsis-3) u dorosłych poza OIT. Wynik ≥2 pkt wskazuje na wysokie ryzyko zgonu i powikłań.";
+      form.innerHTML = select("population", "Zakres zastosowania", [
+        ["adult", "Osoba dorosła (≥18 lat) z podejrzeniem zakażenia"],
+        ["child", "Dziecko <18 lat (nie dotyczy · użyj PEWS / Phoenix)"],
+      ]) +
+      '<div class="calc-pair">' +
+      number("rr", "Częstość oddechów (RR) · /min", 0, 100) +
+      number("sbp", "Ciśnienie skurczowe (SBP) · mmHg", 0, 300) +
+      '</div>' +
+      select("alteredMentation", "Ocena stanu świadomości", [
+        ["no", "Przytomny / stan wyjściowy (GCS 15)"],
+        ["yes", "Zaburzenia świadomości / spadek GCS (GCS <15)"],
+      ], "Punkt przyznawany przy jakimkolwiek ostrym zaburzeniu świadomości lub GCS <15.") +
+      '<p class="calc-note">Kryteria qSOFA (po 1 pkt): RR ≥22/min, SBP ≤100 mmHg, GCS <15. Wynik ≥2 pkt wymaga natychmiastowego wdrożenia protokołu sepsy. Wynik 0–1 pkt nie wyklucza sepsy przy podejrzeniu klinicznym.</p>';
     }
     form.innerHTML += '<button type="button" id="calc-reset">Wyczyść ten kalkulator</button>';
     $("calc-reset").onclick = () => {
-      drafts[active] = active === "news2" ? {scale:"1"} : active === "curb65" ? {population:"adult",variant:"curb65"} : {};
+      drafts[active] = active === "news2" ? {scale:"1"} : active === "curb65" ? {population:"adult",variant:"curb65",ureaUnit:"mmol"} : active === "qsofa" ? {population:"adult"} : {};
       renderForm();
       form.querySelector("select,input")?.focus();
     };
@@ -152,17 +176,25 @@
         ...Object.fromEntries(["behaviour","respiratory","cardiovascular"].map(k=>[k,numeric(k)])),
         ageNorms:values.ageNorms, bronchodilators:boolean("bronchodilators"), postopVomiting:boolean("postopVomiting"),
       });
-    } else {
+    } else if (active === "curb65") {
       $("curb-urea-wrap")?.style.setProperty("display", values.variant === "crb65" ? "none" : "");
       result = S.curb65({
         population: values.population,
         variant: values.variant,
+        ureaUnit: values.ureaUnit,
         confusion: boolean("confusion"),
         urea: numeric("urea"),
         rr: numeric("rr"),
         sbp: numeric("sbp"),
         dbp: numeric("dbp"),
         age: numeric("age"),
+      });
+    } else {
+      result = S.qsofa({
+        population: values.population,
+        rr: numeric("rr"),
+        sbp: numeric("sbp"),
+        alteredMentation: boolean("alteredMentation"),
       });
     }
     renderResult();
@@ -172,7 +204,7 @@
     box.dataset.level = result.ok ? result.kind : "incomplete";
     $("calc-result-name").textContent = labels[active];
     $("calc-value").textContent = !result.ok ? "—" : result.total === null ? "NT" : String(result.total);
-    $("calc-max").textContent = !result.ok || result.total === null ? "" : active === "gcs" ? "/ 15" : active === "pews" ? "/ 13" : active === "curb65" ? (result.max ? `/ ${result.max}` : "/ 5") : "";
+    $("calc-max").textContent = !result.ok || result.total === null ? "" : active === "gcs" ? "/ 15" : active === "pews" ? "/ 13" : active === "curb65" ? (result.max ? `/ ${result.max}` : "/ 5") : active === "qsofa" ? "/ 3" : "";
     $("calc-verdict").textContent = result.ok ? result.headline : "Uzupełnij ocenę";
     $("calc-live").textContent = result.ok ? result.summary : "Brak wyniku. " + result.errors.join(" ");
     $("calc-output").innerHTML = result.ok
@@ -206,6 +238,20 @@
   $("calc-form").addEventListener("input", e=>{
     if(e.target.name==="scale"){
       $("calc-form").elements.confirmScale2.checked=false;
+    }
+    if(e.target.name==="ureaUnit"){
+      const isMgdl = e.target.value === "mgdl";
+      const input = $("calc-urea");
+      const label = input?.closest(".calc-field")?.querySelector("label");
+      if (input) {
+        input.min = isMgdl ? "1" : "0.1";
+        input.max = isMgdl ? "300" : "100";
+        input.step = isMgdl ? "1" : "0.1";
+        input.inputMode = isMgdl ? "numeric" : "decimal";
+      }
+      if (label) {
+        label.textContent = isMgdl ? "U · Azot mocznikowy (BUN) · mg/dl" : "U · Stężenie mocznika we krwi · mmol/l";
+      }
     }
     readAndCalculate();
   });

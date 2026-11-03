@@ -153,3 +153,42 @@ test("CURB-65: validation errors for missing/invalid fields and non-adults",()=>
   assert.equal(S.curb65({...base,sbp:-10}).ok, false);
   assert.equal(S.curb65({...base,variant:"invalid"}).ok, false);
 });
+test("CURB-65: BUN in mg/dL cutoff >19, boundaries and units",()=>{
+  const base = {population:"adult",variant:"curb65",ureaUnit:"mgdl",confusion:false,rr:20,sbp:120,dbp:80,age:50};
+  assert.equal(S.curb65({...base,urea:19}).total, 0);
+  assert.equal(S.curb65({...base,urea:19.1}).total, 1);
+  assert.equal(S.curb65({...base,urea:25}).total, 1);
+  assert.match(S.curb65({...base,urea:25}).parts[1].value, /mg\/dl/);
+  assert.equal(S.curb65({...base,urea:0}).ok, false);
+  assert.equal(S.curb65({...base,urea:301}).ok, false);
+  assert.equal(S.curb65({...base,ureaUnit:"invalid"}).ok, false);
+});
+test("qSOFA: all 8 combinations of criteria evaluate correctly",()=>{
+  for(const r of [20, 24])
+    for(const s of [110, 95])
+      for(const m of [false, true]){
+        const expected = (r>=22?1:0) + (s<=100?1:0) + (m?1:0);
+        const res = S.qsofa({population:"adult",rr:r,sbp:s,alteredMentation:m});
+        assert.equal(res.ok, true);
+        assert.equal(res.total, expected);
+        assert.equal(res.max, 3);
+        assert.equal(res.kind, expected >= 2 ? "high" : "neutral");
+      }
+});
+test("qSOFA: exact boundary values for RR (21 vs 22), SBP (101 vs 100), and mental status",()=>{
+  const base = {population:"adult",rr:20,sbp:120,alteredMentation:false};
+  assert.equal(S.qsofa({...base,rr:21}).total, 0);
+  assert.equal(S.qsofa({...base,rr:22}).total, 1);
+  assert.equal(S.qsofa({...base,sbp:101}).total, 0);
+  assert.equal(S.qsofa({...base,sbp:100}).total, 1);
+  assert.equal(S.qsofa({...base,sbp:99}).total, 1);
+  assert.equal(S.qsofa({...base,alteredMentation:true}).total, 1);
+  assert.equal(S.qsofa({...base,rr:22,sbp:100}).total, 2);
+  assert.equal(S.qsofa({...base,rr:22,sbp:100,alteredMentation:true}).total, 3);
+});
+test("qSOFA: validation errors for missing/invalid fields and non-adults",()=>{
+  assert.equal(S.qsofa({population:"child",rr:20,sbp:120,alteredMentation:false}).ok, false);
+  assert.equal(S.qsofa({population:"adult",rr:-1,sbp:120,alteredMentation:false}).ok, false);
+  assert.equal(S.qsofa({population:"adult",rr:20,sbp:350,alteredMentation:false}).ok, false);
+  assert.equal(S.qsofa({population:"adult",rr:20,sbp:120,alteredMentation:null}).ok, false);
+});

@@ -105,24 +105,36 @@
     if (x.population !== "adult") return fail("CURB-65 / CRB-65 dotyczy wyłącznie osób dorosłych (≥18 lat) z podejrzeniem lub rozpoznaniem pozaszpitalnego zapalenia płuc (CAP).");
     const variant = x.variant ?? "curb65";
     if (!["curb65", "crb65"].includes(variant)) return fail("Wybierz wariant kalkulatora: CURB-65 (ze stężeniem mocznika) lub CRB-65 (ocena pozaszpitalna).");
+    const ureaUnit = x.ureaUnit ?? "mmol";
+    if (!["mmol", "mgdl"].includes(ureaUnit)) return fail("Wybierz jednostkę stężenia mocznika: mmol/l lub mg/dl (BUN).");
     const errors = [];
     if (typeof x.confusion !== "boolean") errors.push("Oceń obecność nowego splątania (AMTS ≤8 lub dezorientacja w czasie/miejscu/osobie).");
     if (!finite(x.rr, 0, 100)) errors.push("Oddechy/min: wymagana liczba całkowita 0–100.");
     if (!finite(x.sbp, 0, 300)) errors.push("Ciśnienie skurczowe: wymagana liczba całkowita 0–300 mmHg.");
     if (!finite(x.dbp, 0, 200)) errors.push("Ciśnienie rozkurczowe: wymagana liczba całkowita 0–200 mmHg.");
     if (!finite(x.age, 18, 130)) errors.push("Wiek: wymagana liczba całkowita 18–130 lat.");
-    if (variant === "curb65" && !finite(x.urea, 0.1, 100, false))
-      errors.push("Mocznik: podaj stężenie 0,1–100,0 mmol/l (lub wybierz wariant CRB-65 bez mocznika).");
+    if (variant === "curb65") {
+      const minUrea = ureaUnit === "mgdl" ? 1 : 0.1;
+      const maxUrea = ureaUnit === "mgdl" ? 300 : 100;
+      if (!finite(x.urea, minUrea, maxUrea, false))
+        errors.push(ureaUnit === "mgdl"
+          ? "BUN: podaj stężenie 1–300 mg/dl (lub przełącz na CRB-65)."
+          : "Mocznik: podaj stężenie 0,1–100,0 mmol/l (lub przełącz na CRB-65).");
+    }
     if (errors.length) return fail(...errors);
 
     const c = x.confusion ? 1 : 0;
-    const u = variant === "curb65" ? (x.urea > 7 ? 1 : 0) : null;
+    const isHighUrea = ureaUnit === "mgdl" ? x.urea > 19 : x.urea > 7.0;
+    const u = variant === "curb65" ? (isHighUrea ? 1 : 0) : null;
     const r = x.rr >= 30 ? 1 : 0;
     const b = (x.sbp < 90 || x.dbp <= 60) ? 1 : 0;
     const age65 = x.age >= 65 ? 1 : 0;
 
     const parts = [part("C · Świadomość", x.confusion ? "Nowe splątanie" : "Bez splątania", c)];
-    if (variant === "curb65") parts.push(part("U · Mocznik", `${x.urea} mmol/l`, u));
+    if (variant === "curb65") {
+      const unitLabel = ureaUnit === "mgdl" ? "mg/dl (BUN)" : "mmol/l";
+      parts.push(part("U · Mocznik", `${x.urea} ${unitLabel}`, u));
+    }
     parts.push(
       part("R · Oddechy", `${x.rr}/min`, r),
       part("B · Ciśnienie", `${x.sbp}/${x.dbp} mmHg`, b),
@@ -146,9 +158,37 @@
 
     const name = isCurb ? "CURB-65" : "CRB-65";
     return {
-      ok: true, total, parts, variant, max, kind: response[0], headline: response[1], action: response[2],
+      ok: true, total, parts, variant, max, ureaUnit, kind: response[0], headline: response[1], action: response[2],
       summary: `${name} = ${total}/${max}. ${parts.map(p => `${p.label}: ${p.value} (${p.score} pkt)`).join("; ")}. ${response[1]}.`,
     };
   }
-  globalThis.ClinicalScores = Object.freeze({ gcs, news2, pews, curb65 });
+  function qsofa(x) {
+    if (x.population !== "adult") return fail("qSOFA jest zwalidowany dla osób dorosłych (≥18 lat) z podejrzeniem zakażenia. W pediatrii zastosuj dedykowane karty wczesnego ostrzegania (PEWS / Phoenix Sepsis).");
+    const errors = [];
+    if (!finite(x.rr, 0, 100)) errors.push("Częstość oddechów (RR): wymagana liczba całkowita 0–100/min.");
+    if (!finite(x.sbp, 0, 300)) errors.push("Ciśnienie skurczowe (SBP): wymagana liczba całkowita 0–300 mmHg.");
+    if (typeof x.alteredMentation !== "boolean") errors.push("Oceń stan świadomości: GCS 15 (przytomny) vs GCS <15 (zaburzenia świadomości).");
+    if (errors.length) return fail(...errors);
+
+    const rrScore = x.rr >= 22 ? 1 : 0;
+    const sbpScore = x.sbp <= 100 ? 1 : 0;
+    const mentationScore = x.alteredMentation ? 1 : 0;
+
+    const parts = [
+      part("Częstość oddechów (RR ≥22/min)", `${x.rr}/min`, rrScore),
+      part("Ciśnienie skurczowe (SBP ≤100 mmHg)", `${x.sbp} mmHg`, sbpScore),
+      part("Stan świadomości (GCS <15)", x.alteredMentation ? "GCS <15 / zaburzenia" : "Przytomny (GCS 15)", mentationScore),
+    ];
+
+    const total = parts.reduce((s, p) => s + p.score, 0);
+    const response = total >= 2
+      ? ["high", "Wynik dodatni (≥2 pkt) · wysokie ryzyko sepsy", "Znacznie podwyższone ryzyko zgonu i przedłużonego pobytu na OIT. Natychmiast wdrożyć protokół sepsy (mleczany, posiewy krwi przed antybiotykiem, szybka antybiotykoterapia, resuscytacja płynowa) i rozważyć OIT/OOM."]
+      : ["neutral", "Wynik ujemny (0–1 pkt) · sepsa niewykluczona", "Niski wynik qSOFA nie wyklucza sepsy ani ciężkiego zakażenia. Przy podejrzeniu klinicznym kontynuuj diagnostykę, monitoruj parametry życiowe i rozważ pełną skalę NEWS2 / SOFA."];
+
+    return {
+      ok: true, total, max: 3, parts, kind: response[0], headline: response[1], action: response[2],
+      summary: `qSOFA = ${total}/3. ${parts.map(p => `${p.label}: ${p.value} (${p.score} pkt)`).join("; ")}. ${response[1]}.`,
+    };
+  }
+  globalThis.ClinicalScores = Object.freeze({ gcs, news2, pews, curb65, qsofa });
 })();
