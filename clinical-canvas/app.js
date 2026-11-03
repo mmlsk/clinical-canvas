@@ -48,7 +48,9 @@
         globalThis.crypto?.randomUUID?.() ||
         `n-${Date.now().toString(36)}-${++counter}`;
     } while (
-      Object.values(store.graphs).some((g) => g.nodes.some((n) => n.id === id))
+      Object.values(store.graphs).some(
+        (g) => g.nodes.some((n) => n.id === id) || g.edges.some((e) => e.id === id),
+      )
     );
     return id;
   }

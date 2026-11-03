@@ -164,8 +164,7 @@
     };
   });
   $("calc-form").addEventListener("submit", e=>e.preventDefault());
-  $("calc-form").addEventListener("input", readAndCalculate);
-  $("calc-form").addEventListener("change", e=>{
+  $("calc-form").addEventListener("input", e=>{
     if(e.target.name==="scale"){
       $("calc-form").elements.confirmScale2.checked=false;
     }
