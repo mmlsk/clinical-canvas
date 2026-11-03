@@ -101,5 +101,54 @@
       summary: `Brighton PEWS / UBC 31.05.2024 = ${total}/13 (domeny ${base}/9 + modyfikatory ${total - base}/4). ${parts.map(p => `${p.label}: ${p.score} pkt`).join("; ")}. Bez uniwersalnego progu eskalacji.`,
     };
   }
-  globalThis.ClinicalScores = Object.freeze({ gcs, news2, pews });
+  function curb65(x) {
+    if (x.population !== "adult") return fail("CURB-65 / CRB-65 dotyczy wyłącznie osób dorosłych (≥18 lat) z podejrzeniem lub rozpoznaniem pozaszpitalnego zapalenia płuc (CAP).");
+    const variant = x.variant ?? "curb65";
+    if (!["curb65", "crb65"].includes(variant)) return fail("Wybierz wariant kalkulatora: CURB-65 (ze stężeniem mocznika) lub CRB-65 (ocena pozaszpitalna).");
+    const errors = [];
+    if (typeof x.confusion !== "boolean") errors.push("Oceń obecność nowego splątania (AMTS ≤8 lub dezorientacja w czasie/miejscu/osobie).");
+    if (!finite(x.rr, 0, 100)) errors.push("Oddechy/min: wymagana liczba całkowita 0–100.");
+    if (!finite(x.sbp, 0, 300)) errors.push("Ciśnienie skurczowe: wymagana liczba całkowita 0–300 mmHg.");
+    if (!finite(x.dbp, 0, 200)) errors.push("Ciśnienie rozkurczowe: wymagana liczba całkowita 0–200 mmHg.");
+    if (!finite(x.age, 18, 130)) errors.push("Wiek: wymagana liczba całkowita 18–130 lat.");
+    if (variant === "curb65" && !finite(x.urea, 0.1, 100, false))
+      errors.push("Mocznik: podaj stężenie 0,1–100,0 mmol/l (lub wybierz wariant CRB-65 bez mocznika).");
+    if (errors.length) return fail(...errors);
+
+    const c = x.confusion ? 1 : 0;
+    const u = variant === "curb65" ? (x.urea > 7 ? 1 : 0) : null;
+    const r = x.rr >= 30 ? 1 : 0;
+    const b = (x.sbp < 90 || x.dbp <= 60) ? 1 : 0;
+    const age65 = x.age >= 65 ? 1 : 0;
+
+    const parts = [part("C · Świadomość", x.confusion ? "Nowe splątanie" : "Bez splątania", c)];
+    if (variant === "curb65") parts.push(part("U · Mocznik", `${x.urea} mmol/l`, u));
+    parts.push(
+      part("R · Oddechy", `${x.rr}/min`, r),
+      part("B · Ciśnienie", `${x.sbp}/${x.dbp} mmHg`, b),
+      part("65 · Wiek", `${x.age} lat`, age65)
+    );
+
+    const total = parts.reduce((s, p) => s + p.score, 0);
+    const max = variant === "curb65" ? 5 : 4;
+    const isCurb = variant === "curb65";
+    const response = isCurb
+      ? (total >= 3
+          ? ["high", "Grupa 3 · wysokie ryzyko (3–5 pkt)", "Ciężkie zapalenie płuc, wysoka śmiertelność (15–40%). Wskazana pilna hospitalizacja; przy 4–5 pkt pilna ocena wskazań do OIT / OOM."]
+          : total === 2
+          ? ["warning", "Grupa 2 · umiarkowane ryzyko (2 pkt)", "Śmiertelność ~9%. Rozważ krótką hospitalizację lub leczenie ambulatoryjne z bardzo ścisłym nadzorem."]
+          : ["neutral", "Grupa 1 · niskie ryzyko (0–1 pkt)", "Niska śmiertelność (<3%). Zwykle kwalifikuje się do leczenia w warunkach domowych / POZ (chyba że występują inne czynniki ryzyka)."])
+      : (total >= 3
+          ? ["high", "Wysokie ryzyko (3–4 pkt)", "Ciężkie zapalenie płuc, wysoka śmiertelność (>15–30%). Pilne skierowanie do szpitala; rozważ bezpośrednie przyjęcie na OIT."]
+          : total >= 1
+          ? ["warning", "Pośrednie ryzyko (1–2 pkt)", "Zwiększone ryzyko zgonu (1–8%). Rozważ skierowanie do szpitala, zwłaszcza przy wyniku 2 pkt lub istotnych chorobach współistniejących."]
+          : ["neutral", "Bardzo niskie ryzyko (0 pkt)", "Bardzo niska śmiertelność (<1%). Zwykle bezpieczne leczenie w warunkach domowych / ambulatoryjnych."]);
+
+    const name = isCurb ? "CURB-65" : "CRB-65";
+    return {
+      ok: true, total, parts, variant, max, kind: response[0], headline: response[1], action: response[2],
+      summary: `${name} = ${total}/${max}. ${parts.map(p => `${p.label}: ${p.value} (${p.score} pkt)`).join("; ")}. ${response[1]}.`,
+    };
+  }
+  globalThis.ClinicalScores = Object.freeze({ gcs, news2, pews, curb65 });
 })();

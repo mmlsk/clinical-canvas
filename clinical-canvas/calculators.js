@@ -10,9 +10,13 @@
     ],
     news2: [["Royal College of Physicians · NEWS2, 2017", "https://www.rcp.ac.uk/media/ctulqqbn/news2-executive-summary_0.pdf"]],
     pews: [["UBC CPD · Brighton PEWS, 31.05.2024", "https://ubccpd.ca/sites/default/files/documents/Brighton-PEWS.pdf"]],
+    curb65: [
+      ["BTS Guidelines for the Management of CAP in Adults (2009 update)", "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/pneumonia-adults/"],
+      ["NICE NG138 · Pneumonia (community-acquired)", "https://www.nice.org.uk/guidance/ng138"],
+    ],
   };
-  const labels = { gcs:"GCS", news2:"NEWS2", pews:"Brighton PEWS" };
-  let active = "gcs", drafts = { gcs:{}, news2:{scale:"1"}, pews:{} }, result = null;
+  const labels = { gcs:"GCS", news2:"NEWS2", pews:"Brighton PEWS", curb65:"CURB-65 / CRB-65" };
+  let active = "gcs", drafts = { gcs:{}, news2:{scale:"1"}, pews:{}, curb65:{population:"adult",variant:"curb65"} }, result = null;
   const options = (items, current) => '<option value="">Wybierz…</option>' + items.map(([v, label]) =>
     `<option value="${escape(v)}"${String(current ?? "") === String(v) ? " selected" : ""}>${escape(label)}</option>`).join("");
   function select(name, label, items, help = "") {
@@ -84,7 +88,7 @@
         ["A","A · przytomny, bez nowego splątania"],["C","C · nowe splątanie"],["V","V · reaguje na głos"],["P","P · reaguje na ból"],["U","U · nie reaguje"],
       ]) + "</div>" +
       '<p class="calc-note">Samo POChP nie kwalifikuje do skali 2. Jeśli nie wiadomo, czy splątanie jest nowe, traktuj je jako nowe do wyjaśnienia. NEWS2 może być niewiarygodny przy wysokim uszkodzeniu rdzenia. Niepokój kliniczny ma pierwszeństwo przed niską sumą.</p>';
-    } else {
+    } else if (active === "pews") {
       $("calc-description").textContent = "Brighton PEWS według karty UBC z 31.05.2024. Domeny 0–9 + modyfikatory 0–4, razem 0–13.";
       form.innerHTML = '<p class="calc-note">To określony wariant Brighton, nie NHS National PEWS ani Bedside PEWS. Kategorie HR/RR dobierz według norm wieku i lokalnej karty; formularz nie przelicza automatycznie surowego tętna i oddechów. Przy kilku pasujących kategoriach wybierz najwyższą.</p>' +
       `<label class="calc-check"><input name="ageNorms" type="checkbox"${drafts.pews.ageNorms ? " checked" : ""}><span>Oceniono HR/RR względem norm wieku oraz stan dziecka według właściwej lokalnej karty pediatrycznej.</span></label>` +
@@ -93,10 +97,33 @@
       yesNo("bronchodilators","Leki rozszerzające oskrzela co 20 minut") +
       yesNo("postopVomiting","Uporczywe wymioty po operacji") + "</fieldset>" +
       '<p class="calc-note">Nie utożsamiaj przepływu l/min ze stałą FiO₂: zależy ona od urządzenia, szczelności i wentylacji. Zachowano kryteria wskazanego wariantu, bez mieszania z innymi tabelami PEWS.</p>';
+    } else {
+      $("calc-description").textContent = "Ocena ciężkości pozaszpitalnego zapalenia płuc (CAP) u dorosłych: CURB-65 (ze stężeniem mocznika) lub CRB-65 (ocena pozaszpitalna).";
+      const isCrb = drafts.curb65.variant === "crb65";
+      form.innerHTML = select("population", "Zakres zastosowania", [
+        ["adult","Osoba dorosła (≥18 lat) z zapaleniem płuc"],["child","Dziecko <18 lat (nie dotyczy)"],
+      ]) +
+      select("variant", "Wariant skali", [
+        ["curb65","CURB-65 · szpital / z wynikiem mocznika"],
+        ["crb65","CRB-65 · ocena pozaszpitalna (bez mocznika)"],
+      ]) +
+      yesNo("confusion", "C · Nowo powstałe splątanie (AMTS ≤8 lub dezorientacja)") +
+      `<div class="calc-field" id="curb-urea-wrap"${isCrb ? ' style="display:none"' : ""}>` +
+      number("urea", "U · Stężenie mocznika we krwi · mmol/l", 0.1, 100, 0.1) +
+      `</div>` +
+      '<div class="calc-pair">' +
+      number("rr", "R · Częstość oddechów / min", 0, 100) +
+      number("age", "65 · Wiek pacjenta · lata", 18, 130) +
+      '</div>' +
+      '<div class="calc-pair">' +
+      number("sbp", "B · Ciśnienie skurczowe · mmHg", 0, 300) +
+      number("dbp", "B · Ciśnienie rozkurczowe · mmHg", 0, 200) +
+      '</div>' +
+      '<p class="calc-note">Kryteria punktowane (po 1 pkt): C (splątanie), U (mocznik >7 mmol/l), R (oddechy ≥30/min), B (ciśnienie: SBP <90 mmHg lub DBP ≤60 mmHg), 65 (wiek ≥65 lat). Skala służy stratyfikacji ryzyka zgonu w pozaszpitalnym zapaleniu płuc u dorosłych, nie zastępuje oceny klinicznej.</p>';
     }
     form.innerHTML += '<button type="button" id="calc-reset">Wyczyść ten kalkulator</button>';
     $("calc-reset").onclick = () => {
-      drafts[active] = active === "news2" ? {scale:"1"} : {};
+      drafts[active] = active === "news2" ? {scale:"1"} : active === "curb65" ? {population:"adult",variant:"curb65"} : {};
       renderForm();
       form.querySelector("select,input")?.focus();
     };
@@ -116,7 +143,7 @@
         population:values.population, ...Object.fromEntries(["rr","spo2","sbp","hr","temp","scale"].map(k=>[k,numeric(k)])),
         oxygen:boolean("oxygen"), consciousness:values.consciousness, confirmScale2:values.confirmScale2,
       });
-    } else {
+    } else if (active === "pews") {
       for (const name of ["behaviour","respiratory","cardiovascular"]) {
         const n = numeric(name);
         $(`criterion-${name}`).textContent = n === null ? "Wybierz kategorię po ocenie klinicznej." : criteria[name][n][1];
@@ -124,6 +151,18 @@
       result = S.pews({
         ...Object.fromEntries(["behaviour","respiratory","cardiovascular"].map(k=>[k,numeric(k)])),
         ageNorms:values.ageNorms, bronchodilators:boolean("bronchodilators"), postopVomiting:boolean("postopVomiting"),
+      });
+    } else {
+      $("curb-urea-wrap")?.style.setProperty("display", values.variant === "crb65" ? "none" : "");
+      result = S.curb65({
+        population: values.population,
+        variant: values.variant,
+        confusion: boolean("confusion"),
+        urea: numeric("urea"),
+        rr: numeric("rr"),
+        sbp: numeric("sbp"),
+        dbp: numeric("dbp"),
+        age: numeric("age"),
       });
     }
     renderResult();
@@ -133,7 +172,7 @@
     box.dataset.level = result.ok ? result.kind : "incomplete";
     $("calc-result-name").textContent = labels[active];
     $("calc-value").textContent = !result.ok ? "—" : result.total === null ? "NT" : String(result.total);
-    $("calc-max").textContent = !result.ok || result.total === null ? "" : active === "gcs" ? "/ 15" : active === "pews" ? "/ 13" : "";
+    $("calc-max").textContent = !result.ok || result.total === null ? "" : active === "gcs" ? "/ 15" : active === "pews" ? "/ 13" : active === "curb65" ? (result.max ? `/ ${result.max}` : "/ 5") : "";
     $("calc-verdict").textContent = result.ok ? result.headline : "Uzupełnij ocenę";
     $("calc-live").textContent = result.ok ? result.summary : "Brak wyniku. " + result.errors.join(" ");
     $("calc-output").innerHTML = result.ok
@@ -159,7 +198,7 @@
       if (!["ArrowLeft","ArrowRight","Home","End"].includes(ev.key)) return;
       ev.preventDefault();
       const keys=Object.keys(labels), index=keys.indexOf(active);
-      active=keys[ev.key==="Home"?0:ev.key==="End"?2:(index+(ev.key==="ArrowRight"?1:2))%3];
+      active=keys[ev.key==="Home"?0:ev.key==="End"?keys.length-1:(index+(ev.key==="ArrowRight"?1:keys.length-1))%keys.length];
       renderForm();$(`calc-tab-${active}`).focus();
     };
   });

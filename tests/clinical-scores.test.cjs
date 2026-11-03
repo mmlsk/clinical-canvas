@@ -100,3 +100,56 @@ test("Brighton PEWS: unknown domains/modifiers and unconfirmed age norms block s
   assert.equal(S.pews({...pews,respiratory:4}).ok,false);
   assert.equal(S.pews({...pews,cardiovascular:1.5}).ok,false);
 });
+test("CURB-65: all 32 combinations of criteria evaluate correctly",()=>{
+  const base = {population:"adult",variant:"curb65",confusion:false,urea:5.0,rr:20,sbp:120,dbp:80,age:50};
+  for(const c of [false,true])
+    for(const u of [5.0,8.0])
+      for(const r of [20,32])
+        for(const b of [[120,80],[85,55]])
+          for(const a of [50,70]){
+            const expected = (c?1:0)+(u>7?1:0)+(r>=30?1:0)+((b[0]<90||b[1]<=60)?1:0)+(a>=65?1:0);
+            const res = S.curb65({...base,confusion:c,urea:u,rr:r,sbp:b[0],dbp:b[1],age:a});
+            assert.equal(res.ok, true);
+            assert.equal(res.total, expected);
+            assert.equal(res.max, 5);
+          }
+});
+test("CURB-65: exact boundary transitions for urea, RR, SBP, DBP, and age",()=>{
+  const base = {population:"adult",variant:"curb65",confusion:false,urea:5.0,rr:20,sbp:120,dbp:80,age:50};
+  assert.equal(S.curb65({...base,urea:7.0}).total, 0);
+  assert.equal(S.curb65({...base,urea:7.1}).total, 1);
+  assert.equal(S.curb65({...base,rr:29}).total, 0);
+  assert.equal(S.curb65({...base,rr:30}).total, 1);
+  assert.equal(S.curb65({...base,sbp:90,dbp:61}).total, 0);
+  assert.equal(S.curb65({...base,sbp:89,dbp:61}).total, 1);
+  assert.equal(S.curb65({...base,sbp:90,dbp:60}).total, 1);
+  assert.equal(S.curb65({...base,sbp:85,dbp:55}).total, 1);
+  assert.equal(S.curb65({...base,age:64}).total, 0);
+  assert.equal(S.curb65({...base,age:65}).total, 1);
+});
+test("CURB-65 / CRB-65: risk tiers and CRB-65 variant without urea",()=>{
+  const base = {population:"adult",confusion:false,urea:5.0,rr:20,sbp:120,dbp:80,age:50};
+  // CURB-65 tiers
+  assert.equal(S.curb65({...base,variant:"curb65"}).kind, "neutral");
+  assert.equal(S.curb65({...base,variant:"curb65",age:70}).kind, "neutral");
+  assert.equal(S.curb65({...base,variant:"curb65",age:70,rr:30}).kind, "warning");
+  assert.equal(S.curb65({...base,variant:"curb65",age:70,rr:30,urea:8.0}).kind, "high");
+  // CRB-65 variant: urea is not required
+  const crb0 = S.curb65({population:"adult",variant:"crb65",confusion:false,rr:20,sbp:120,dbp:80,age:50});
+  assert.equal(crb0.ok, true);
+  assert.equal(crb0.total, 0);
+  assert.equal(crb0.max, 4);
+  assert.equal(crb0.kind, "neutral");
+  assert.equal(S.curb65({population:"adult",variant:"crb65",confusion:true,rr:20,sbp:120,dbp:80,age:50}).kind, "warning");
+  assert.equal(S.curb65({population:"adult",variant:"crb65",confusion:true,rr:30,sbp:85,dbp:55,age:50}).kind, "high");
+});
+test("CURB-65: validation errors for missing/invalid fields and non-adults",()=>{
+  const base = {population:"adult",variant:"curb65",confusion:false,urea:5.0,rr:20,sbp:120,dbp:80,age:50};
+  assert.equal(S.curb65({...base,population:"child"}).ok, false);
+  assert.equal(S.curb65({...base,confusion:null}).ok, false);
+  assert.equal(S.curb65({...base,urea:-1}).ok, false);
+  assert.equal(S.curb65({...base,rr:120}).ok, false);
+  assert.equal(S.curb65({...base,age:15}).ok, false);
+  assert.equal(S.curb65({...base,sbp:-10}).ok, false);
+  assert.equal(S.curb65({...base,variant:"invalid"}).ok, false);
+});
