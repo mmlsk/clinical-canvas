@@ -1,6 +1,9 @@
 # Clinical Canvas
 
 [![CI](https://github.com/mmlsk/clinical-canvas/actions/workflows/test.yml/badge.svg)](https://github.com/mmlsk/clinical-canvas/actions/workflows/test.yml)
+[![Demo](https://img.shields.io/badge/Live_Demo-clinical--canvas-164c4b)](https://mmlsk.github.io/clinical-canvas/)
+
+🚀 **Wersja demonstracyjna online (bez instalacji):** [https://mmlsk.github.io/clinical-canvas/](https://mmlsk.github.io/clinical-canvas/)
 
 Interaktywna, edytowalna makieta edukacyjna algorytmów diagnostycznych dla dorosłych i dzieci. Wersja 2.1 zawiera płótno grafowe, bibliotekę źródeł oraz kalkulatory GCS, NEWS2 i Brighton PEWS / UBC.
 
