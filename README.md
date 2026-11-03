@@ -68,14 +68,15 @@ Backend nie zapewnia współedycji na żywo, produkcyjnej obsługi kont ani gwar
 ## Testy
 
 ```bash
-node --test tests/clinical-scores.test.cjs
+node --test tests/*.test.cjs
 python3 -m unittest tests/test_server.py
+node --check clinical-canvas/graph-model.js
 node --check clinical-canvas/app.js
 node --check clinical-canvas/calculators.js
 node --check clinical-canvas/score-engine.js
 ```
 
-13 grup testów obejmuje m.in. 120 kombinacji E/V/M, 256 kombinacji domen i modyfikatorów PEWS, progi NEWS2, NT, niekompletne dane i wyłączenia populacyjne. Są to testy implementacji reguł, nie walidacja kliniczna narzędzia.
+Testy jednostkowe i integracyjne obejmują m.in. 120 kombinacji E/V/M, 256 kombinacji domen i modyfikatorów PEWS, progi NEWS2, NT, reguły walidacji grafów `validate()`, migrację starszych eksportów `migrate()`, odporność SQLite na współbieżne zapisy oraz zachowanie serwera w środowisku lokalnym i proxy. Są to testy poprawności technicznej i implementacji reguł, nie walidacja kliniczna narzędzia.
 
 ## Warianty skal i źródła
 

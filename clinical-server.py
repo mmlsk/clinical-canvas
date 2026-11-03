@@ -98,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
         path = raw_path.rstrip("/") or "/"
         if path == "/api/health":
             return self.reply(200, {"status": "ok"})
-        if path in ("/", "/index.html", "/styles.css", "/clinical-data.js", "/storage-adapter.js", "/score-engine.js", "/calculators.js", "/app.js"):
+        if path in ("/", "/index.html", "/styles.css", "/clinical-data.js", "/storage-adapter.js", "/graph-model.js", "/score-engine.js", "/calculators.js", "/app.js"):
             name = path.lstrip("/") or "index.html"
             source = ROOT / "clinical-canvas" / name
             raw = source.read_bytes()
