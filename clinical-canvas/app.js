@@ -37,6 +37,8 @@
     toastTimer,
     drag = null,
     counter = 0;
+  const pointers = new Map();
+  let pinchStart = null;
   let store = { schema_version: 2, graphs: {} };
   const svg = $("canvas"),
     viewport = $("viewport"),
@@ -1153,6 +1155,24 @@
   }
   svg.addEventListener("pointerdown", (ev) => {
     if (ev.button !== 0) return;
+    pointers.set(ev.pointerId, { clientX: ev.clientX, clientY: ev.clientY });
+    if (pointers.size === 2) {
+      if (drag?.mode === "node" && drag.moved) schedule();
+      const pts = Array.from(pointers.values());
+      pinchStart = {
+        dist: Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY),
+        k: transform.k,
+        midX: (pts[0].clientX + pts[1].clientX) / 2,
+        midY: (pts[0].clientY + pts[1].clientY) / 2,
+        tx: transform.x,
+        ty: transform.y,
+      };
+      drag = { mode: "pinch" };
+      svg.setPointerCapture(ev.pointerId);
+      ev.preventDefault();
+      return;
+    }
+    if (pointers.size > 2) return;
     const ng = ev.target.closest("[data-node]"),
       eg = ev.target.closest("[data-edge]");
     if (ev.target.classList.contains("port") && ng) {
@@ -1197,7 +1217,28 @@
     ev.preventDefault();
   });
   svg.addEventListener("pointermove", (ev) => {
+    if (pointers.has(ev.pointerId)) {
+      pointers.set(ev.pointerId, { clientX: ev.clientX, clientY: ev.clientY });
+    }
     if (!drag) return;
+    if (drag.mode === "pinch" && pointers.size >= 2) {
+      const pts = Array.from(pointers.values());
+      const dist = Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY);
+      if (pinchStart && pinchStart.dist > 5) {
+        const ratio = dist / pinchStart.dist;
+        const k = Math.min(2.5, Math.max(0.12, pinchStart.k * ratio));
+        const r = svg.getBoundingClientRect();
+        const midX = (pts[0].clientX + pts[1].clientX) / 2;
+        const midY = (pts[0].clientY + pts[1].clientY) / 2;
+        const mx = pinchStart.midX - r.left;
+        const my = pinchStart.midY - r.top;
+        transform.x = mx - ((mx - pinchStart.tx) * k) / pinchStart.k + (midX - pinchStart.midX);
+        transform.y = my - ((my - pinchStart.ty) * k) / pinchStart.k + (midY - pinchStart.midY);
+        transform.k = k;
+        applyTransform();
+      }
+      return;
+    }
     if (drag.mode === "pan") {
       transform.x = drag.x + ev.clientX - drag.sx;
       transform.y = drag.y + ev.clientY - drag.sy;
@@ -1220,6 +1261,25 @@
     }
   });
   svg.addEventListener("pointerup", (ev) => {
+    pointers.delete(ev.pointerId);
+    if (drag?.mode === "pinch") {
+      if (pointers.size === 1) {
+        const remaining = Array.from(pointers.values())[0];
+        drag = {
+          mode: "pan",
+          sx: remaining.clientX,
+          sy: remaining.clientY,
+          x: transform.x,
+          y: transform.y,
+        };
+        pinchStart = null;
+        return;
+      }
+      drag = null;
+      pinchStart = null;
+      svg.classList.remove("panning");
+      return;
+    }
     if (!drag) return;
     if (drag.mode === "node") {
       if (drag.moved) schedule();
@@ -1255,8 +1315,10 @@
     drag = null;
   });
   svg.addEventListener("pointercancel", () => {
+    pointers.delete(ev.pointerId);
     if (drag?.mode === "node" && drag.moved) schedule();
     drag = null;
+    pinchStart = null;
     svg.classList.remove("panning");
   });
   svg.addEventListener(
