@@ -446,6 +446,50 @@ h1 {
   stroke: var(--accent);
   stroke-width: 3;
 }
+.edge.active-branch {
+  stroke: var(--accent);
+  stroke-width: 3.5;
+  stroke-dasharray: 6 3;
+  animation: branchPulse 1.2s infinite linear;
+}
+@keyframes branchPulse {
+  to {
+    stroke-dashoffset: -18;
+  }
+}
+.node-chips {
+  pointer-events: all;
+}
+.node-chip {
+  cursor: pointer;
+}
+.node-chip .chip-bg {
+  fill: var(--soft);
+  stroke: #b9cbca;
+  stroke-width: 1;
+  transition: all 0.15s ease;
+}
+.node-chip:hover .chip-bg {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.node-chip .chip-text {
+  fill: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  pointer-events: none;
+  transition: fill 0.15s ease;
+}
+.node-chip:hover .chip-text {
+  fill: var(--paper);
+}
+.node-chip.active .chip-bg {
+  fill: var(--accent);
+  stroke: var(--accent);
+}
+.node-chip.active .chip-text {
+  fill: var(--paper);
+}
 .edge-label {
   fill: var(--muted);
   font-size: 10px;
@@ -555,6 +599,133 @@ summary span {
   font-size: 11px;
   line-height: 1.5;
   margin: 8px 0;
+}
+.decision-compartment {
+  margin: 16px 0;
+  padding: 13px;
+  background: #f3f7f6;
+  border: 1px solid #c8dedb;
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
+}
+.decision-compartment.terminal {
+  border-left-color: var(--muted);
+  background: var(--soft);
+}
+.decision-compartment h3 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.decision-count-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--soft);
+  color: var(--accent);
+  border: 1px solid #c8dedb;
+}
+.compartment-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+.branch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.branch-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+.branch-card.active-branch-card {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(22, 98, 96, 0.18);
+}
+.branch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+.branch-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 3px;
+  background: var(--soft);
+  color: var(--accent);
+  border: 1px solid #c8dedb;
+}
+.branch-card.active-branch-card .branch-badge {
+  background: var(--accent);
+  color: var(--paper);
+  border-color: var(--accent);
+}
+.branch-match-count {
+  font-size: 11px;
+  color: var(--muted);
+}
+.branch-criteria-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 6px 0 9px;
+}
+.criterion-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink);
+  cursor: pointer;
+}
+.criterion-check input {
+  margin: 3px 0 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.criterion-check.checked span {
+  font-weight: 600;
+  color: var(--accent);
+}
+.branch-jump-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: center;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--paper);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+.branch-jump-btn:hover {
+  opacity: 0.92;
+}
+.branch-jump-btn .branch-arrow {
+  font-weight: 400;
+  opacity: 0.85;
 }
 .detail-toolbar {
   display: flex;

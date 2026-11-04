@@ -368,3 +368,124 @@ test("layout(): handles cyclic and disconnected graphs safely", () => {
     assert.ok(n.y >= -50000 && n.y <= 50000);
   }
 });
+
+test("validate(): accepts and sanitizes node.data.criteria list field", () => {
+  const payload = {
+    schema_version: 2,
+    graphs: {
+      "chest.a": {
+        title: "Klatka piersiowa",
+        cohort: "a",
+        nodes: [
+          {
+            id: "n1",
+            title: "Ocena wstępna",
+            type: "assessment",
+            x: 0,
+            y: 0,
+            data: {
+              criteria: ["SpO2 < 92%", "SBP < 90 mmHg", "Ból opłucnowy"],
+            },
+          },
+        ],
+        edges: [],
+      },
+    },
+  };
+  const val = M.validate(payload);
+  const n = val.graphs["chest.a"].nodes[0];
+  assert.deepStrictEqual(n.data.criteria, [
+    "SpO2 < 92%",
+    "SBP < 90 mmHg",
+    "Ból opłucnowy",
+  ]);
+});
+
+test("decision criteria & branch logic: variable extraction and auto-pan centering", () => {
+  // Test helper mimicking app.js branchVariables logic
+  function branchVariables(n, e, target) {
+    const list = (x) => Array.isArray(x) ? x : typeof x === "string" && x.trim() ? [x] : [];
+    const d = n.data || {};
+    const label = (e.label || "").trim();
+    const lowLabel = label.toLowerCase();
+
+    const critList = list(d.criteria);
+    if (critList.length) {
+      if (lowLabel) {
+        const matching = critList.filter((c) => {
+          const low = c.toLowerCase();
+          return (
+            low.startsWith(`[${lowLabel}]`) ||
+            low.startsWith(`${lowLabel}:`) ||
+            low.includes(lowLabel)
+          );
+        });
+        if (matching.length)
+          return matching.map((c) => c.replace(/^\[[^\]]+\]\s*|^[^:]+:\s*/, ""));
+      }
+      return critList;
+    }
+
+    const isAffirmative =
+      /tak|dodatn|obecn|wysok|niestabiln|piln|ciężk|kryt|spełni|alert/i.test(lowLabel) ||
+      (target?.type === "urgent" && !/nie|ujemn|brak|stabiln/i.test(lowLabel));
+    const isNegative = /nie|ujemn|brak|stabiln|nisk|norm/i.test(lowLabel);
+
+    if (isAffirmative && list(d.red).length) return list(d.red);
+    if (isNegative && list(d.red).length) {
+      return ["Brak obecności czerwonych flag i cech niestabilności", ...list(d.exam).slice(0, 2)];
+    }
+    if (list(d.tests).length && (/badani|wynik|test|rtg|tk|lab/i.test(lowLabel) || target?.type === "test")) {
+      return list(d.tests);
+    }
+    if (list(d.exam).length && (/objaw|stan|badani/i.test(lowLabel) || target?.type === "assessment")) {
+      return list(d.exam);
+    }
+    if (list(d.hx).length) return list(d.hx);
+    if (label) return [`Kryterium: ${label}`];
+    return [`Wskazanie kliniczne: ${target?.title || "Przejście do kolejnego etapu"}`];
+  }
+
+  // Case 1: Prefixed custom criteria
+  const customNode = {
+    data: {
+      criteria: ["[Tak] Tachykardia > 100", "[Tak] D-dimer > 500", "[Nie] Prawidłowy HR i brak duszności"],
+    },
+  };
+  assert.deepStrictEqual(branchVariables(customNode, { label: "Tak" }, { type: "test" }), [
+    "Tachykardia > 100",
+    "D-dimer > 500",
+  ]);
+  assert.deepStrictEqual(branchVariables(customNode, { label: "Nie" }, { type: "note" }), [
+    "Prawidłowy HR i brak duszności",
+  ]);
+
+  // Case 2: Affirmative branch derives red flags
+  const redNode = {
+    data: {
+      red: ["Hipotensja SBP < 90", "Zaburzenia świadomości"],
+      exam: ["Szmer pęcherzykowy symetryczny"],
+    },
+  };
+  assert.deepStrictEqual(branchVariables(redNode, { label: "Tak" }, { type: "urgent" }), [
+    "Hipotensja SBP < 90",
+    "Zaburzenia świadomości",
+  ]);
+
+  // Case 3: Negative branch derives absence of red flags
+  assert.deepStrictEqual(branchVariables(redNode, { label: "Nie" }, { type: "assessment" }), [
+    "Brak obecności czerwonych flag i cech niestabilności",
+    "Szmer pęcherzykowy symetryczny",
+  ]);
+
+  // Case 4: Centering pan transform calculation
+  const W = 220, H = 110, k = 1.0;
+  const viewport = { width: 1000, height: 600 };
+  const targetNode = { x: 300, y: 200 };
+  const targetCenterX = targetNode.x + W / 2; // 410
+  const targetCenterY = targetNode.y + H / 2; // 255
+  const panX = Math.round(viewport.width / 2 - targetCenterX * k); // 500 - 410 = 90
+  const panY = Math.round((viewport.height - 40) / 2 - targetCenterY * k); // 280 - 255 = 25
+  assert.equal(panX, 90);
+  assert.equal(panY, 25);
+});

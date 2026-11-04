@@ -23,7 +23,9 @@
     selected = null,
     editing = false,
     query = "",
-    transform = { x: 20, y: 20, k: 1 };
+    transform = { x: 20, y: 20, k: 1 },
+    activeBranch = null,
+    checkedVars = new Set();
   let undo = [],
     redo = [],
     pendingSave,
@@ -324,11 +326,15 @@
           b = g.nodes.find((n) => n.id === e.to);
         if (!a || !b) return;
         const r = route(a, b, i),
-          isSelected = selected?.kind === "edge" && selected.id === e.id;
-        const edge = S("g", { "data-edge": e.id });
+          isSelected = selected?.kind === "edge" && selected.id === e.id,
+          isActiveBranch = activeBranch === e.id;
+        const edge = S("g", { "data-edge": e.id, class: isActiveBranch ? "active-branch-g" : "" });
         edge.append(
           S("path", { class: "edge-hit", d: r.d }),
-          S("path", { class: `edge ${isSelected ? "selected" : ""}`, d: r.d }),
+          S("path", {
+            class: `edge ${isSelected ? "selected" : ""} ${isActiveBranch ? "active-branch" : ""}`,
+            d: r.d,
+          }),
         );
         if (e.label) {
           const maxLabel = rows(e.label, 26)[0] || "",
@@ -389,13 +395,55 @@
           ),
         );
         ng.appendChild(title);
-        ng.appendChild(
-          S(
-            "text",
-            { class: "node-sub", x: 14, y: 94 },
-            "Szczegóły / badania / źródła",
-          ),
-        );
+        const outgoing = g.edges.filter((e) => e.from === n.id);
+        if (outgoing.length > 0) {
+          const chipsGroup = S("g", { class: "node-chips" });
+          let chipX = 14;
+          outgoing.slice(0, 3).forEach((e) => {
+            const targetNode = g.nodes.find((tn) => tn.id === e.to);
+            const labelRaw = e.label || (targetNode ? targetNode.title : "Dalej");
+            const chipText = (labelRaw.length > 10 ? labelRaw.slice(0, 9) + "…" : labelRaw) + " ➔";
+            const chipW = Math.max(42, chipText.length * 6 + 12);
+            if (chipX + chipW <= W - 10) {
+              const chipG = S("g", {
+                class: `node-chip ${activeBranch === e.id ? "active" : ""}`,
+                "data-jump-node": e.to,
+                "data-branch-edge": e.id,
+              });
+              chipG.append(
+                S("rect", {
+                  x: chipX,
+                  y: 84,
+                  width: chipW,
+                  height: 18,
+                  rx: 9,
+                  class: "chip-bg",
+                }),
+                S(
+                  "text",
+                  {
+                    x: chipX + chipW / 2,
+                    y: 96,
+                    "text-anchor": "middle",
+                    class: "chip-text",
+                  },
+                  chipText,
+                ),
+              );
+              chipsGroup.appendChild(chipG);
+              chipX += chipW + 6;
+            }
+          });
+          ng.appendChild(chipsGroup);
+        } else {
+          ng.appendChild(
+            S(
+              "text",
+              { class: "node-sub", x: 14, y: 94 },
+              "Krok końcowy ścieżki",
+            ),
+          );
+        }
         if (editing)
           ng.appendChild(
             S("circle", {
@@ -467,9 +515,23 @@
     transform.k = k;
     applyTransform();
   }
-  function selectNode(id) {
+  function panToNode(id) {
+    const info = nodeInfo(id);
+    if (!info) return;
+    const vg = visibleGraphs();
+    const idx = vg.indexOf(info.g);
+    const offset = idx >= 0 ? idx * 900 : 0;
+    const r = svg.getBoundingClientRect();
+    const targetCenterX = info.n.x + offset + W / 2;
+    const targetCenterY = info.n.y + H / 2;
+    transform.x = Math.round(r.width / 2 - targetCenterX * transform.k);
+    transform.y = Math.round((r.height - 40) / 2 - targetCenterY * transform.k);
+    applyTransform();
+  }
+  function selectNode(id, pan = false) {
     selected = { kind: "node", id };
     editing = false;
+    if (pan) panToNode(id);
     draw();
     renderPanel();
   }
@@ -477,6 +539,8 @@
     active = id;
     editing = false;
     selected = null;
+    activeBranch = null;
+    checkedVars.clear();
     renderNav();
     renderHeading();
     const g = visibleGraphs()[0];
@@ -486,6 +550,7 @@
     fit();
   }
   const SECTIONS = [
+    ["criteria", "Zmienne decyzyjne i kryteria przejścia"],
     ["hx", "Badanie podmiotowe"],
     ["exam", "Badanie przedmiotowe"],
     ["red", "Czerwone flagi"],
@@ -495,6 +560,73 @@
     ["hy", "High-yield"],
     ["gem", "Hidden gems"],
   ];
+  function branchVariables(n, e, target) {
+    const d = n.data || {};
+    const label = (e.label || "").trim();
+    const lowLabel = label.toLowerCase();
+
+    // 1. Explicit criteria defined in node
+    const critList = list(d.criteria);
+    if (critList.length) {
+      if (lowLabel) {
+        const matching = critList.filter((c) => {
+          const low = c.toLowerCase();
+          return (
+            low.startsWith(`[${lowLabel}]`) ||
+            low.startsWith(`${lowLabel}:`) ||
+            low.includes(lowLabel)
+          );
+        });
+        if (matching.length)
+          return matching.map((c) => c.replace(/^\[[^\]]+\]\s*|^[^:]+:\s*/, ""));
+      }
+      return critList;
+    }
+
+    // 2. Derive from clinical data based on branch polarity
+    const isAffirmative =
+      /tak|dodatn|obecn|wysok|niestabiln|piln|ciężk|kryt|spełni|alert/i.test(
+        lowLabel,
+      ) ||
+      (target?.type === "urgent" &&
+        !/nie|ujemn|brak|stabiln/i.test(lowLabel));
+    const isNegative = /nie|ujemn|brak|stabiln|nisk|norm/i.test(lowLabel);
+
+    if (isAffirmative && list(d.red).length) {
+      return list(d.red);
+    }
+    if (isNegative && list(d.red).length) {
+      return [
+        "Brak obecności czerwonych flag i cech niestabilności",
+        ...list(d.exam).slice(0, 2),
+      ];
+    }
+
+    if (
+      list(d.tests).length &&
+      (/badani|wynik|test|rtg|tk|lab/i.test(lowLabel) || target?.type === "test")
+    ) {
+      return list(d.tests);
+    }
+
+    if (
+      list(d.exam).length &&
+      (/objaw|stan|badani/i.test(lowLabel) || target?.type === "assessment")
+    ) {
+      return list(d.exam);
+    }
+
+    if (list(d.hx).length) {
+      return list(d.hx);
+    }
+
+    if (label) {
+      return [`Kryterium: ${label}`];
+    }
+    return [
+      `Wskazanie kliniczne: ${target?.title || "Przejście do kolejnego etapu"}`,
+    ];
+  }
   function sourceHTML(key) {
     const s = Object.hasOwn(D.sources, key) ? D.sources[key] : null,
       url = s?.url || safeURL(key);
@@ -513,14 +645,76 @@
         '<div class="empty">Wybierz krok na płótnie lub na liście. Każdy moduł zawiera wywiad, badanie, wskazania do badań i źródła.</div>';
       return;
     }
-    const { n } = info,
+    const { n, g } = info,
       d = n.data || {};
     if (editing) {
       renderEditor(n);
       return;
     }
-    const calculator = ["gcs", "news2", "pews"].find(key => n.title.toLowerCase().includes(key));
-    panel.innerHTML = `<div class="detail-head"><div class="kicker">${escape(TYPES[n.type])} · ${n.cohort === "a" ? "DOROŚLI" : n.cohort === "p" ? "DZIECI" : "WSPÓLNE"}</div><h2>${escape(n.title)}</h2><div class="meta">${n.custom ? "Treść własna / edytowana. Wymaga ponownej weryfikacji." : `Synteza źródeł sprawdzona: ${D.reviewed}. Nie oznacza aktualizacji wytycznej w tym dniu.`}</div><div class="detail-toolbar"><button data-action="edit">Edytuj krok</button><button data-action="child">+ Gałąź</button>${calculator ? `<button data-action="calculate" data-score="${calculator}">Oblicz ${calculator.toUpperCase()}</button>` : ""}</div></div><div class="detail-body"><p>${escape(d.body || "Brak opisu — możesz dodać własny.")}</p>${SECTIONS.map(
+    const calculator = ["gcs", "news2", "pews"].find((key) =>
+      n.title.toLowerCase().includes(key),
+    );
+    const outgoing = g.edges.filter((e) => e.from === n.id);
+
+    let decisionCompartmentHTML = "";
+    if (outgoing.length > 0) {
+      const branchCardsHTML = outgoing
+        .map((e) => {
+          const target = g.nodes.find((tn) => tn.id === e.to);
+          if (!target) return "";
+          const vars = branchVariables(n, e, target);
+          const branchCheckedCount = vars.filter((_, idx) =>
+            checkedVars.has(`${e.id}-${idx}`),
+          ).length;
+          const isBranchActive = activeBranch === e.id;
+          const branchLabel = e.label || "Dalej";
+
+          return `
+          <div class="branch-card ${isBranchActive ? "active-branch-card" : ""}" data-edge-id="${escape(e.id)}">
+            <div class="branch-header">
+              <span class="branch-badge">${escape(branchLabel)}</span>
+              <span class="branch-match-count">${branchCheckedCount > 0 ? `Zaznaczono ${branchCheckedCount}/${vars.length}` : `${vars.length} kryteriów`}</span>
+            </div>
+            <div class="branch-criteria-list">
+              ${vars
+                .map((v, idx) => {
+                  const varKey = `${e.id}-${idx}`;
+                  const isChecked = checkedVars.has(varKey);
+                  return `
+                  <label class="criterion-check ${isChecked ? "checked" : ""}">
+                    <input type="checkbox" data-var="${escape(varKey)}" data-edge="${escape(e.id)}" ${isChecked ? "checked" : ""}>
+                    <span>${escape(v)}</span>
+                  </label>`;
+                })
+                .join("")}
+            </div>
+            <button type="button" class="branch-jump-btn" data-jump-node="${escape(target.id)}" data-branch-edge="${escape(e.id)}">
+              <span class="branch-arrow">Przejdź do:</span> <strong>${escape(target.title)}</strong> ➔
+            </button>
+          </div>`;
+        })
+        .join("");
+
+      decisionCompartmentHTML = `
+      <section class="decision-compartment">
+        <h3>
+          <span>Warunki decyzyjne i przejście do kolejnych kroków</span>
+          <span class="decision-count-badge">${outgoing.length} ${outgoing.length === 1 ? "ścieżka" : "ścieżki"}</span>
+        </h3>
+        <p class="compartment-subtitle">Zaznacz zmienne kliniczne obecne u pacjenta, aby podświetlić gałąź schematu i przejść do kolejnego kafelka.</p>
+        <div class="branch-list">
+          ${branchCardsHTML}
+        </div>
+      </section>`;
+    } else {
+      decisionCompartmentHTML = `
+      <section class="decision-compartment terminal">
+        <h3>Punkt końcowy schematu</h3>
+        <p class="compartment-subtitle">Ten kafelek stanowi zakończenie bieżącej ścieżki decyzyjnej. Sprawdź zalecenia dyspozycyjne poniżej.</p>
+      </section>`;
+    }
+
+    panel.innerHTML = `<div class="detail-head"><div class="kicker">${escape(TYPES[n.type])} · ${n.cohort === "a" ? "DOROŚLI" : n.cohort === "p" ? "DZIECI" : "WSPÓLNE"}</div><h2>${escape(n.title)}</h2><div class="meta">${n.custom ? "Treść własna / edytowana. Wymaga ponownej weryfikacji." : `Synteza źródeł sprawdzona: ${D.reviewed}. Nie oznacza aktualizacji wytycznej w tym dniu.`}</div><div class="detail-toolbar"><button data-action="edit">Edytuj krok</button><button data-action="child">+ Gałąź</button>${calculator ? `<button data-action="calculate" data-score="${calculator}">Oblicz ${calculator.toUpperCase()}</button>` : ""}</div></div><div class="detail-body"><p>${escape(d.body || "Brak opisu — możesz dodać własny.")}</p>${decisionCompartmentHTML}${SECTIONS.map(
       ([key, label]) =>
         list(d[key]).length
           ? `<section class="detail-section ${key === "red" ? "red" : ""}"><h3>${label}</h3><ul>${list(
@@ -722,7 +916,40 @@
       }
     }
   });
+  panel.addEventListener("change", (ev) => {
+    const check = ev.target.closest(".criterion-check input");
+    if (check) {
+      const varKey = check.dataset.var;
+      const edgeId = check.dataset.edge;
+      if (check.checked) {
+        checkedVars.add(varKey);
+        activeBranch = edgeId;
+      } else {
+        checkedVars.delete(varKey);
+      }
+      draw();
+      renderPanel();
+    }
+  });
   panel.addEventListener("click", (ev) => {
+    const jumpBtn = ev.target.closest("[data-jump-node]");
+    if (jumpBtn) {
+      const targetId = jumpBtn.dataset.jumpNode;
+      const branchEdge = jumpBtn.dataset.branchEdge;
+      if (branchEdge) activeBranch = branchEdge;
+      selectNode(targetId, true);
+      return;
+    }
+    const branchCard = ev.target.closest(".branch-card");
+    if (branchCard && !ev.target.closest("button, input, label")) {
+      const edgeId = branchCard.dataset.edgeId;
+      if (edgeId) {
+        activeBranch = activeBranch === edgeId ? null : edgeId;
+        draw();
+        renderPanel();
+      }
+      return;
+    }
     const action = ev.target.closest("[data-action]")?.dataset.action;
     if (!action) return;
     if (action === "calculate") window.ClinicalCalculators?.open(ev.target.closest("[data-score]").dataset.score);
@@ -750,7 +977,7 @@
   $("steps").addEventListener("click", (ev) => {
     const button = ev.target.closest("[data-step]");
     if (button) {
-      selectNode(button.dataset.step);
+      selectNode(button.dataset.step, true);
       if (innerWidth < 1000)
         panel.scrollIntoView({ behavior: "auto", block: "start" });
     }
@@ -885,6 +1112,15 @@
       return;
     }
     if (pointers.size > 2) return;
+    const chip = ev.target.closest("[data-jump-node]");
+    if (chip) {
+      const targetId = chip.getAttribute("data-jump-node");
+      const branchEdge = chip.getAttribute("data-branch-edge");
+      if (branchEdge) activeBranch = branchEdge;
+      selectNode(targetId, true);
+      ev.preventDefault();
+      return;
+    }
     const ng = ev.target.closest("[data-node]"),
       eg = ev.target.closest("[data-edge]");
     if (ev.target.classList.contains("port") && ng) {
@@ -913,6 +1149,7 @@
       };
     } else if (eg) {
       selected = { kind: "edge", id: eg.dataset.edge };
+      activeBranch = eg.dataset.edge;
       editing = false;
       draw();
       renderPanel();

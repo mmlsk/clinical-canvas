@@ -195,6 +195,7 @@
             "gem",
             "dispo",
             "src",
+            "criteria",
           ]) {
             const items = list(n.data[field]);
             if (items.length > 80) throw Error("Zbyt wiele wpisów w polu.");
