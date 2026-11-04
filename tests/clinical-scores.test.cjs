@@ -192,3 +192,62 @@ test("qSOFA: validation errors for missing/invalid fields and non-adults",()=>{
   assert.equal(S.qsofa({population:"adult",rr:20,sbp:350,alteredMentation:false}).ok, false);
   assert.equal(S.qsofa({population:"adult",rr:20,sbp:120,alteredMentation:null}).ok, false);
 });
+test("Wells PE: extrema (0 to 12.5), all component weights and two-tier threshold",()=>{
+  const zero = {
+    population: "adult", hr: 80,
+    dvtSigns: false, peMostLikely: false, immobilizationOrSurgery: false,
+    previousVte: false, hemoptysis: false, malignancy: false,
+  };
+  const r0 = S.wellsPe(zero);
+  assert.equal(r0.ok, true);
+  assert.equal(r0.total, 0);
+  assert.equal(r0.likely, false);
+  assert.equal(r0.kind, "neutral");
+  assert.match(r0.action, /D-dimer/);
+
+  const full = {
+    population: "adult", hr: 110,
+    dvtSigns: true, peMostLikely: true, immobilizationOrSurgery: true,
+    previousVte: true, hemoptysis: true, malignancy: true,
+  };
+  const rFull = S.wellsPe(full);
+  assert.equal(rFull.ok, true);
+  assert.equal(rFull.total, 12.5);
+  assert.equal(rFull.likely, true);
+  assert.equal(rFull.kind, "high");
+  assert.match(rFull.action, /angio-TK/);
+
+  // Individual point values
+  assert.equal(S.wellsPe({...zero, dvtSigns: true}).total, 3.0);
+  assert.equal(S.wellsPe({...zero, peMostLikely: true}).total, 3.0);
+  assert.equal(S.wellsPe({...zero, hr: 105}).total, 1.5);
+  assert.equal(S.wellsPe({...zero, immobilizationOrSurgery: true}).total, 1.5);
+  assert.equal(S.wellsPe({...zero, previousVte: true}).total, 1.5);
+  assert.equal(S.wellsPe({...zero, hemoptysis: true}).total, 1.0);
+  assert.equal(S.wellsPe({...zero, malignancy: true}).total, 1.0);
+
+  // Exact 4.0 vs 4.5 boundary (Two-tier cut-off <= 4 PE unlikely, > 4 PE likely)
+  const score4 = S.wellsPe({...zero, dvtSigns: true, hemoptysis: true}); // 3.0 + 1.0 = 4.0
+  assert.equal(score4.total, 4.0);
+  assert.equal(score4.likely, false);
+  assert.equal(score4.kind, "neutral");
+
+  const score45 = S.wellsPe({...zero, dvtSigns: true, hr: 105}); // 3.0 + 1.5 = 4.5
+  assert.equal(score45.total, 4.5);
+  assert.equal(score45.likely, true);
+  assert.equal(score45.kind, "high");
+});
+test("Wells PE: heart rate boundary and input validation",()=>{
+  const zero = {
+    population: "adult", hr: 80,
+    dvtSigns: false, peMostLikely: false, immobilizationOrSurgery: false,
+    previousVte: false, hemoptysis: false, malignancy: false,
+  };
+  assert.equal(S.wellsPe({...zero, hr: 100}).total, 0);
+  assert.equal(S.wellsPe({...zero, hr: 101}).total, 1.5);
+
+  assert.equal(S.wellsPe({...zero, population: "child"}).ok, false);
+  assert.equal(S.wellsPe({...zero, hr: -5}).ok, false);
+  assert.equal(S.wellsPe({...zero, hr: 360}).ok, false);
+  assert.equal(S.wellsPe({...zero, dvtSigns: null}).ok, false);
+});

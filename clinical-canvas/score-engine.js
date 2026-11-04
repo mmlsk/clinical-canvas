@@ -190,5 +190,50 @@
       summary: `qSOFA = ${total}/3. ${parts.map(p => `${p.label}: ${p.value} (${p.score} pkt)`).join("; ")}. ${response[1]}.`,
     };
   }
-  globalThis.ClinicalScores = Object.freeze({ gcs, news2, pews, curb65, qsofa });
+  function wellsPe(x) {
+    if (x.population !== "adult") return fail("Skala Wellsa dla ZP (PE) jest zwalidowana wyłącznie dla osób dorosłych (≥18 lat) z podejrzeniem zatorowości płucnej.");
+    const errors = [];
+    if (!finite(x.hr, 0, 350)) errors.push("Tętno: wymagana liczba całkowita 0–350/min.");
+    for (const [key, label] of [
+      ["dvtSigns", "Objawy kliniczne ZŻG (ból palpacyjny lub obrzęk kończyny)"],
+      ["peMostLikely", "Brak innego bardziej prawdopodobnego rozpoznania niż ZP"],
+      ["immobilizationOrSurgery", "Unieruchomienie ≥3 dni lub operacja w ciągu 4 tyg."],
+      ["previousVte", "Przebyta ZP lub ZŻG w wywiadzie"],
+      ["hemoptysis", "Krwioplucie"],
+      ["malignancy", "Choroba nowotworowa (aktywna lub leczona w ciągu 6 mies.)"],
+    ]) {
+      if (typeof x[key] !== "boolean") errors.push(`Oceń kryterium: ${label}.`);
+    }
+    if (errors.length) return fail(...errors);
+
+    const hrScore = x.hr > 100 ? 1.5 : 0;
+    const dvtScore = x.dvtSigns ? 3.0 : 0;
+    const peLikelyScore = x.peMostLikely ? 3.0 : 0;
+    const immobScore = x.immobilizationOrSurgery ? 1.5 : 0;
+    const vteScore = x.previousVte ? 1.5 : 0;
+    const hemoScore = x.hemoptysis ? 1.0 : 0;
+    const caScore = x.malignancy ? 1.0 : 0;
+
+    const parts = [
+      part("Objawy kliniczne ZŻG (+3,0)", x.dvtSigns ? "Tak" : "Nie", dvtScore),
+      part("ZP najbardziej prawdopodobna (+3,0)", x.peMostLikely ? "Tak" : "Nie", peLikelyScore),
+      part("Tachykardia >100/min (+1,5)", `${x.hr}/min`, hrScore),
+      part("Unieruchomienie / operacja (+1,5)", x.immobilizationOrSurgery ? "Tak" : "Nie", immobScore),
+      part("Przebyta ZP lub ZŻG (+1,5)", x.previousVte ? "Tak" : "Nie", vteScore),
+      part("Krwioplucie (+1,0)", x.hemoptysis ? "Tak" : "Nie", hemoScore),
+      part("Choroba nowotworowa (+1,0)", x.malignancy ? "Tak" : "Nie", caScore),
+    ];
+
+    const total = parts.reduce((s, p) => s + p.score, 0);
+    const likely = total > 4.0;
+    const response = likely
+      ? ["high", "ZP prawdopodobna (>4,0 pkt)", "Pilne angio-TK tętnic płucnych (CTPA) lub scyntygrafia V/Q. Nie opóźniaj diagnostyki oczekiwaniem na D-dimery. Przy braku przeciwwskazań rozważ natychmiastowe wdrożenie pełnej antykoagulacji."]
+      : ["neutral", "ZP mało prawdopodobna (≤4,0 pkt)", "Wykonaj oznaczenie D-dimerów o wysokiej czułości. Prawidłowy wynik (<500 µg/l lub u osób >50 r.ż. poniżej progu wiek × 10 µg/l) bezpiecznie wyklucza ZP. Podwyższone D-dimery wymagają wykonania angio-TK (CTPA)."];
+
+    return {
+      ok: true, total, max: 12.5, parts, likely, kind: response[0], headline: response[1], action: response[2],
+      summary: `Wells PE = ${total}/12.5 pkt. ${parts.map(p => `${p.label}: ${p.score} pkt`).join("; ")}. ${response[1]}.`,
+    };
+  }
+  globalThis.ClinicalScores = Object.freeze({ gcs, news2, pews, curb65, qsofa, wellsPe });
 })();

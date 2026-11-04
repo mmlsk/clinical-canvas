@@ -18,9 +18,14 @@
       ["Sepsis-3 Consensus Definitions (JAMA 2016)", "https://jamanetwork.com/journals/jama/fullarticle/2492881"],
       ["Surviving Sepsis Campaign Guidelines 2021", "https://www.sccm.org/clinical-resources/guidelines/guidelines/surviving-sepsis-campaign-2021"],
     ],
+    wellspe: [
+      ["Wells PS et al. · Thromb Haemost 2000 (Oryginalna publikacja skali)", "https://pubmed.ncbi.nlm.nih.gov/10744147/"],
+      ["ESC Guidelines for Acute Pulmonary Embolism (2019)", "https://academic.oup.com/eurheartj/article/41/4/543/5556136"],
+      ["NICE NG158 · Venous thromboembolic diseases (2020)", "https://www.nice.org.uk/guidance/ng158"],
+    ],
   };
-  const labels = { gcs:"GCS", news2:"NEWS2", pews:"Brighton PEWS", curb65:"CURB-65 / CRB-65", qsofa:"qSOFA" };
-  let active = "gcs", drafts = { gcs:{}, news2:{scale:"1"}, pews:{}, curb65:{population:"adult",variant:"curb65",ureaUnit:"mmol"}, qsofa:{population:"adult"} }, result = null;
+  const labels = { gcs:"GCS", news2:"NEWS2", pews:"Brighton PEWS", curb65:"CURB-65 / CRB-65", qsofa:"qSOFA", wellspe:"Wells PE (Zatorowość płucna)" };
+  let active = "gcs", drafts = { gcs:{}, news2:{scale:"1"}, pews:{}, curb65:{population:"adult",variant:"curb65",ureaUnit:"mmol"}, qsofa:{population:"adult"}, wellspe:{population:"adult"} }, result = null;
   const options = (items, current) => '<option value="">Wybierz…</option>' + items.map(([v, label]) =>
     `<option value="${escape(v)}"${String(current ?? "") === String(v) ? " selected" : ""}>${escape(label)}</option>`).join("");
   function select(name, label, items, help = "") {
@@ -129,7 +134,7 @@
       number("dbp", "B · Ciśnienie rozkurczowe · mmHg", 0, 200) +
       '</div>' +
       '<p class="calc-note">Kryteria punktowane (po 1 pkt): C (splątanie), U (mocznik >7 mmol/l lub BUN >19 mg/dl), R (oddechy ≥30/min), B (ciśnienie: SBP <90 mmHg lub DBP ≤60 mmHg), 65 (wiek ≥65 lat). Skala służy stratyfikacji ryzyka zgonu w pozaszpitalnym zapaleniu płuc u dorosłych, nie zastępuje oceny klinicznej.</p>';
-    } else {
+    } else if (active === "qsofa") {
       $("calc-description").textContent = "Szybka przyłóżkowa ocena ryzyka sepsy (Sepsis-3) u dorosłych poza OIT. Wynik ≥2 pkt wskazuje na wysokie ryzyko zgonu i powikłań.";
       form.innerHTML = select("population", "Zakres zastosowania", [
         ["adult", "Osoba dorosła (≥18 lat) z podejrzeniem zakażenia"],
@@ -144,10 +149,24 @@
         ["yes", "Zaburzenia świadomości / spadek GCS (GCS <15)"],
       ], "Punkt przyznawany przy jakimkolwiek ostrym zaburzeniu świadomości lub GCS <15.") +
       '<p class="calc-note">Kryteria qSOFA (po 1 pkt): RR ≥22/min, SBP ≤100 mmHg, GCS <15. Wynik ≥2 pkt wymaga natychmiastowego wdrożenia protokołu sepsy. Wynik 0–1 pkt nie wyklucza sepsy przy podejrzeniu klinicznym.</p>';
+    } else {
+      $("calc-description").textContent = "Ocena prawdopodobieństwa klinicznego zatorowości płucnej (ZP/PE) u dorosłych i stratyfikacja wskazań do D-dimerów vs angio-TK (CTPA).";
+      form.innerHTML = select("population", "Zakres zastosowania", [
+        ["adult", "Osoba dorosła (≥18 lat) z podejrzeniem ZP"],
+        ["child", "Dziecko <18 lat (nie dotyczy · wymaga dedykowanej ścieżki)"],
+      ]) +
+      yesNo("dvtSigns", "Kliniczne objawy ZŻG · +3,0 pkt (obrzęk kończyny i bolesność uciskowa żył głębokich)") +
+      yesNo("peMostLikely", "ZP najbardziej prawdopodobna · +3,0 pkt (inne rozpoznanie jest mniej prawdopodobne niż ZP)") +
+      number("hr", "Tętno / min (tachykardia >100/min daje +1,5 pkt)", 0, 350) +
+      yesNo("immobilizationOrSurgery", "Unieruchomienie lub operacja · +1,5 pkt (unieruchomienie ≥3 dni lub zabieg w ciągu 4 tyg.)") +
+      yesNo("previousVte", "Przebyta ZP lub ZŻG · +1,5 pkt (obiektywnie potwierdzony epizod w wywiadzie)") +
+      yesNo("hemoptysis", "Krwioplucie · +1,0 pkt") +
+      yesNo("malignancy", "Choroba nowotworowa · +1,0 pkt (aktywna, leczona w ciągu ostatnich 6 mies. lub paliatywna)") +
+      '<p class="calc-note">Interpretacja 2-poziomowa (ESC/NICE): wynik ≤4,0 pkt oznacza małe prawdopodobieństwo ZP (wskazanie do D-dimerów o wysokiej czułości; prawidłowy wynik wyklucza ZP bez tomografii). Wynik >4,0 pkt oznacza duże prawdopodobieństwo ZP (wskazanie do natychmiastowego angio-TK tętnic płucnych bez czekania na D-dimery).</p>';
     }
     form.innerHTML += '<button type="button" id="calc-reset">Wyczyść ten kalkulator</button>';
     $("calc-reset").onclick = () => {
-      drafts[active] = active === "news2" ? {scale:"1"} : active === "curb65" ? {population:"adult",variant:"curb65",ureaUnit:"mmol"} : active === "qsofa" ? {population:"adult"} : {};
+      drafts[active] = active === "news2" ? {scale:"1"} : active === "curb65" ? {population:"adult",variant:"curb65",ureaUnit:"mmol"} : ["qsofa","wellspe"].includes(active) ? {population:"adult"} : {};
       renderForm();
       form.querySelector("select,input")?.focus();
     };
@@ -189,12 +208,23 @@
         dbp: numeric("dbp"),
         age: numeric("age"),
       });
-    } else {
+    } else if (active === "qsofa") {
       result = S.qsofa({
         population: values.population,
         rr: numeric("rr"),
         sbp: numeric("sbp"),
         alteredMentation: boolean("alteredMentation"),
+      });
+    } else {
+      result = S.wellsPe({
+        population: values.population,
+        hr: numeric("hr"),
+        dvtSigns: boolean("dvtSigns"),
+        peMostLikely: boolean("peMostLikely"),
+        immobilizationOrSurgery: boolean("immobilizationOrSurgery"),
+        previousVte: boolean("previousVte"),
+        hemoptysis: boolean("hemoptysis"),
+        malignancy: boolean("malignancy"),
       });
     }
     renderResult();
@@ -204,7 +234,7 @@
     box.dataset.level = result.ok ? result.kind : "incomplete";
     $("calc-result-name").textContent = labels[active];
     $("calc-value").textContent = !result.ok ? "—" : result.total === null ? "NT" : String(result.total);
-    $("calc-max").textContent = !result.ok || result.total === null ? "" : active === "gcs" ? "/ 15" : active === "pews" ? "/ 13" : active === "curb65" ? (result.max ? `/ ${result.max}` : "/ 5") : active === "qsofa" ? "/ 3" : "";
+    $("calc-max").textContent = !result.ok || result.total === null ? "" : active === "gcs" ? "/ 15" : active === "pews" ? "/ 13" : active === "curb65" ? (result.max ? `/ ${result.max}` : "/ 5") : active === "qsofa" ? "/ 3" : active === "wellspe" ? "/ 12.5" : "";
     $("calc-verdict").textContent = result.ok ? result.headline : "Uzupełnij ocenę";
     $("calc-live").textContent = result.ok ? result.summary : "Brak wyniku. " + result.errors.join(" ");
     $("calc-output").innerHTML = result.ok
