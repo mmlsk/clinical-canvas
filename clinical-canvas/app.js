@@ -768,6 +768,19 @@
     draw();
   });
   $("fit").onclick = fit;
+  function autoLayout() {
+    const graphs = visibleGraphs();
+    if (!graphs.length) return;
+    checkpoint();
+    graphs.forEach((g) => {
+      M.layout(g);
+    });
+    draw();
+    fit();
+    schedule();
+    toast("Uporządkowano układ ścieżki.");
+  }
+  $("auto-layout").onclick = autoLayout;
   $("zoom-in").onclick = () => zoom(1.2);
   $("toggle-canvas").onclick = () => {
     const show = document.body.classList.toggle("mobile-canvas");
@@ -1144,7 +1157,7 @@
   $("help").onclick = () =>
     showDialog(
       "Jak pracować na płótnie",
-      `<ul><li>Wybierz objaw i populację. Obie ścieżki można porównać, lecz nie są jednym algorytmem dawkowania.</li><li>Przeciągnij tło, zmień zoom lub dopasuj widok. Kliknij krok albo wybierz go z listy pod płótnem.</li><li>Skróty klawiszowe płótna: <b>Tab / Shift+Tab</b> przełącza po kolei kroki ścieżki; <b>Strzałki</b> (lub <b>Shift+Strzałki</b>) precyzyjnie przesuwają zaznaczony krok (16px / 64px); <b>Delete / Backspace</b> usuwa zaznaczone połączenie lub krok (z potwierdzeniem); <b>Escape</b> cofa zaznaczenie; <b>Ctrl/Cmd+Z</b> cofa/ponawia edycje.</li><li>W szczegółach przejdź do edycji. Zmiana nie traci fokusu i oznacza treść jako własną.</li><li>Dodaj gałąź, skalę lub pusty węzeł. Połącz kontrolką „Połącz” w edytorze albo przeciągnij port do drugiego węzła.</li><li>Cofnij/ponów; Ctrl/Cmd+Z poza polem tekstowym. Eksport JSON to przenośna kopia.</li><li>W podglądzie zapis działa na serwerze i jest oddzielny dla odwiedzającego. SQLite i serwer są częścią środowiska podglądowego, nie usługą produkcyjną z gwarancją trwałości. Zachowuj eksporty JSON.</li><li>Wersja samodzielna zapisuje lokalnie. Brak współedycji na żywo i synchronizacji między urządzeniami. Przy konflikcie kart wyeksportuj zmiany i użyj „Wczytaj zapis”. Nie wpisuj danych pacjentów.</li><li>Import starego JSON tworzy osobne archiwum i nie zastępuje nowych ścieżek. Archiwum kliniczne wymaga ponownej weryfikacji.</li></ul>`,
+      `<ul><li>Wybierz objaw i populację. Obie ścieżki można porównać, lecz nie są jednym algorytmem dawkowania.</li><li>Przeciągnij tło, zmień zoom lub dopasuj widok. Przycisk <b>Uporządkuj</b> na dolnym pasku automatycznie wyrównuje kroki w czytelne, hierarchiczne drzewo decyzyjne.</li><li>Skróty klawiszowe płótna: <b>Tab / Shift+Tab</b> przełącza po kolei kroki ścieżki; <b>Strzałki</b> (lub <b>Shift+Strzałki</b>) precyzyjnie przesuwają zaznaczony krok (16px / 64px); <b>Delete / Backspace</b> usuwa zaznaczone połączenie lub krok (z potwierdzeniem); <b>Escape</b> cofa zaznaczenie; <b>Ctrl/Cmd+Z</b> cofa/ponawia edycje.</li><li>W szczegółach przejdź do edycji. Zmiana nie traci fokusu i oznacza treść jako własną.</li><li>Dodaj gałąź, skalę lub pusty węzeł. Połącz kontrolką „Połącz” w edytorze albo przeciągnij port do drugiego węzła.</li><li>Cofnij/ponów; Ctrl/Cmd+Z poza polem tekstowym. Eksport JSON to przenośna kopia.</li><li>W podglądzie zapis działa na serwerze i jest oddzielny dla odwiedzającego. SQLite i serwer są częścią środowiska podglądowego, nie usługą produkcyjną z gwarancją trwałości. Zachowuj eksporty JSON.</li><li>Wersja samodzielna zapisuje lokalnie. Brak współedycji na żywo i synchronizacji między urządzeniami. Przy konflikcie kart wyeksportuj zmiany i użyj „Wczytaj zapis”. Nie wpisuj danych pacjentów.</li><li>Import starego JSON tworzy osobne archiwum i nie zastępuje nowych ścieżek. Archiwum kliniczne wymaga ponownej weryfikacji.</li></ul>`,
     );
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob),

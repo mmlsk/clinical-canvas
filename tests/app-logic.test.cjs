@@ -289,3 +289,82 @@ test("canvas keyboard navigation: Arrow nudging step and boundary limits", () =>
   assert.equal(nudge(49980, 64), 50000);
   assert.equal(nudge(-49980, -64), -50000);
 });
+
+test("layout(): arranges standard pathway hierarchically with descending Y coordinates", () => {
+  const g = M.defaults().graphs["chest.a"];
+  // Mess up coordinates
+  g.nodes.forEach((n) => {
+    n.x = 9999;
+    n.y = -9999;
+  });
+
+  const res = M.layout(g, { anchorX: 260, dx: 260, dy: 152 });
+  assert.equal(res.nodes.length, 7);
+
+  // Root node should be at layer 0 (y = 0)
+  const root = res.nodes.find((n) => n.id === "chest.a.start");
+  assert.equal(root.y, 0);
+  assert.equal(root.x, 260);
+
+  // Descendants should have strictly increasing Y coordinates
+  const red = res.nodes.find((n) => n.id === "chest.a.red");
+  assert.equal(red.y, 152);
+
+  // All nodes must be snapped to 4px grid
+  for (const n of res.nodes) {
+    assert.equal(n.x % 4, 0, `Node ${n.id} x=${n.x} not on 4px grid`);
+    assert.equal(n.y % 4, 0, `Node ${n.id} y=${n.y} not on 4px grid`);
+  }
+});
+
+test("layout(): centers multi-branch siblings symmetrically around anchorX", () => {
+  const custom = {
+    nodes: [
+      { id: "root", title: "Start", type: "assessment", x: 0, y: 0 },
+      { id: "b1", title: "Branch 1", type: "decision", x: 0, y: 0 },
+      { id: "b2", title: "Branch 2", type: "decision", x: 0, y: 0 },
+    ],
+    edges: [
+      { id: "e1", from: "root", to: "b1" },
+      { id: "e2", from: "root", to: "b2" },
+    ],
+  };
+
+  M.layout(custom, { anchorX: 300, dx: 200, dy: 100 });
+  const root = custom.nodes.find((n) => n.id === "root");
+  const b1 = custom.nodes.find((n) => n.id === "b1");
+  const b2 = custom.nodes.find((n) => n.id === "b2");
+
+  assert.equal(root.x, 300);
+  assert.equal(root.y, 0);
+
+  assert.equal(b1.y, 100);
+  assert.equal(b2.y, 100);
+
+  // Sibling nodes should be spaced symmetrically around 300: 200 and 400
+  assert.equal(b1.x, 200);
+  assert.equal(b2.x, 400);
+});
+
+test("layout(): handles cyclic and disconnected graphs safely", () => {
+  const cyclic = {
+    nodes: [
+      { id: "n1", title: "Node 1", type: "note", x: 0, y: 0 },
+      { id: "n2", title: "Node 2", type: "note", x: 0, y: 0 },
+      { id: "island", title: "Island", type: "note", x: 0, y: 0 },
+    ],
+    edges: [
+      { id: "e1", from: "n1", to: "n2" },
+      { id: "e2", from: "n2", to: "n1" },
+    ],
+  };
+
+  const res = M.layout(cyclic);
+  assert.equal(res.nodes.length, 3);
+  for (const n of res.nodes) {
+    assert.ok(Number.isFinite(n.x));
+    assert.ok(Number.isFinite(n.y));
+    assert.ok(n.x >= -50000 && n.x <= 50000);
+    assert.ok(n.y >= -50000 && n.y <= 50000);
+  }
+});

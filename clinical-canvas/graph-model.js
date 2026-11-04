@@ -296,6 +296,84 @@
     );
   }
 
+  function layout(graph, options = {}) {
+    if (!graph || !Array.isArray(graph.nodes) || !graph.nodes.length) return graph;
+    const dx = options.dx ?? 260;
+    const dy = options.dy ?? 152;
+    const anchorX = options.anchorX ?? 260;
+    const anchorY = options.anchorY ?? 0;
+
+    const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
+    const inDegree = new Map(graph.nodes.map((n) => [n.id, 0]));
+    const adj = new Map(graph.nodes.map((n) => [n.id, []]));
+
+    if (Array.isArray(graph.edges)) {
+      for (const e of graph.edges) {
+        if (nodeMap.has(e.from) && nodeMap.has(e.to)) {
+          adj.get(e.from).push(e.to);
+          inDegree.set(e.to, (inDegree.get(e.to) || 0) + 1);
+        }
+      }
+    }
+
+    const layer = new Map();
+    const roots = graph.nodes.filter((n) => (inDegree.get(n.id) || 0) === 0);
+    const queue = [];
+
+    if (roots.length) {
+      for (const r of roots) {
+        layer.set(r.id, 0);
+        queue.push(r.id);
+      }
+    } else {
+      layer.set(graph.nodes[0].id, 0);
+      queue.push(graph.nodes[0].id);
+    }
+
+    const visitedCount = new Map();
+    while (queue.length) {
+      const u = queue.shift();
+      const currentLayer = layer.get(u) || 0;
+      const neighbors = adj.get(u) || [];
+      for (const v of neighbors) {
+        const count = (visitedCount.get(v) || 0) + 1;
+        visitedCount.set(v, count);
+        if (count <= graph.nodes.length) {
+          const nextLayer = Math.max(layer.get(v) ?? 0, currentLayer + 1);
+          if (layer.get(v) !== nextLayer) {
+            layer.set(v, nextLayer);
+            queue.push(v);
+          }
+        }
+      }
+    }
+
+    for (const n of graph.nodes) {
+      if (!layer.has(n.id)) layer.set(n.id, 0);
+    }
+
+    const layers = new Map();
+    for (const n of graph.nodes) {
+      const l = layer.get(n.id) || 0;
+      if (!layers.has(l)) layers.set(l, []);
+      layers.get(l).push(n);
+    }
+
+    const sortedLevels = Array.from(layers.keys()).sort((a, b) => a - b);
+    for (const lvl of sortedLevels) {
+      const row = layers.get(lvl);
+      const count = row.length;
+      const startX = anchorX - ((count - 1) * dx) / 2;
+      const y = anchorY + lvl * dy;
+      row.forEach((n, idx) => {
+        n.x = Math.max(-50000, Math.min(50000, Math.round((startX + idx * dx) / 4) * 4));
+        n.y = Math.max(-50000, Math.min(50000, Math.round(y / 4) * 4));
+      });
+    }
+
+    return graph;
+  }
+
   globalThis.ClinicalModel = Object.freeze({
     TYPES,
     makeGraph,
@@ -305,5 +383,6 @@
     mergeWithDefaults,
     ensureStr,
     list,
+    layout,
   });
 })();
