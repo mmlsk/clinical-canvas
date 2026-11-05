@@ -1301,6 +1301,336 @@ dialog .source-line {
   cursor: pointer;
 }
 
+/* Pharmacology Suite & Contextual Dosing Cards */
+#pharm-dialog {
+  max-width: 1080px;
+  width: calc(100% - 32px);
+  max-height: 92dvh;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  overflow-y: auto;
+}
+.pharm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.pharm-header h2 {
+  font-size: 24px;
+  margin: 4px 0 0;
+}
+.pharm-kicker {
+  font-size: 11px;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 650;
+}
+.pharm-patient-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: var(--soft);
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.pharm-weight-input-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.pharm-weight-input-group input {
+  width: 72px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+.pharm-pop-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--accent);
+  margin-left: auto;
+}
+.pharm-pop-badge.peds {
+  border-color: #d97706;
+  color: #b45309;
+  background: #fef3c7;
+}
+.pharm-est-btn {
+  font-size: 11.5px;
+  padding: 5px 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.pharm-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+  overflow-x: auto;
+}
+.pharm-tab {
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pharm-tab[aria-selected="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+.pharm-description {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+.pharm-panel {
+  min-height: 240px;
+  margin-bottom: 16px;
+}
+.pharm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+.pharm-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px;
+  background: var(--paper);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  display: flex;
+  flex-direction: column;
+}
+.pharm-card h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: var(--ink);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.pharm-card-meta {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+.pharm-card-dose {
+  font-size: 14px;
+  font-weight: 700;
+  color: #164c4b;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: #e8f3f1;
+  border-radius: 4px;
+  border-left: 3px solid #164c4b;
+}
+.pharm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  margin-top: 6px;
+}
+.pharm-table th, .pharm-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+.pharm-table th {
+  background: var(--soft);
+  font-weight: 650;
+  color: var(--ink);
+}
+.pharm-alert {
+  padding: 10px 14px;
+  border-radius: 4px;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  border-left: 4px solid #e11d48;
+  color: #881337;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 10px 0;
+}
+.pharm-result-box {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.pharm-add-btn {
+  font-size: 11.5px;
+  padding: 5px 10px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  align-self: flex-start;
+  margin-top: auto;
+}
+.pharm-add-btn:hover {
+  background: var(--accent);
+  color: var(--paper);
+  border-color: var(--accent);
+}
+.pharm-add-btn.added {
+  background: #e6f4ea;
+  border-color: #34a853;
+  color: #137333;
+}
+.pharm-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.pharm-field {
+  margin-bottom: 12px;
+}
+.pharm-field label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.pharm-field input, .pharm-field select {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+}
+.pharm-calc-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Contextual Drug Box in Tile Details & Walkthrough */
+.tile-drug-box {
+  margin: 12px 0;
+  border: 1px solid #bfdbfe;
+  border-left: 4px solid #2563eb;
+  background: #eff6ff;
+  border-radius: 4px;
+  padding: 12px;
+}
+.tile-drug-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.tile-drug-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e40af;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.pharm-quick-open-btn {
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0;
+}
+.pharm-quick-open-btn:hover {
+  text-decoration: underline;
+}
+.tile-drug-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tile-drug-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  background: var(--paper);
+  border: 1px solid #dbeafe;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12.5px;
+}
+.tile-drug-item-info {
+  flex: 1;
+}
+.tile-drug-notes {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.tile-drug-add-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 3px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tile-drug-add-btn:hover {
+  background: #2563eb;
+  color: #fff;
+  border-color: #2563eb;
+}
+.tile-drug-add-btn.added {
+  background: #e6f4ea;
+  border-color: #34a853;
+  color: #137333;
+}
+
+@media (max-width: 720px) {
+  #pharm-dialog {
+    padding: 16px;
+    width: calc(100% - 16px);
+    max-height: 96dvh;
+  }
+  .pharm-grid {
+    grid-template-columns: 1fr;
+  }
+  .pharm-calc-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Print Dossier Styling */
 .print-only {
   display: none;

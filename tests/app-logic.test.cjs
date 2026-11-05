@@ -9,8 +9,10 @@ ctx.window = ctx;
 ctx.globalThis = ctx;
 vm.runInNewContext(fs.readFileSync("clinical-canvas/clinical-data.js", "utf8"), ctx);
 vm.runInNewContext(fs.readFileSync("clinical-canvas/graph-model.js", "utf8"), ctx);
+vm.runInNewContext(fs.readFileSync("clinical-canvas/pharmacology.js", "utf8"), ctx);
 const M = ctx.ClinicalModel;
 const D = ctx.ClinicalData;
+const P = ctx.ClinicalPharmacology;
 
 test("defaults(): generates all 24 baseline graphs and 168 nodes", () => {
   const defs = M.defaults();
@@ -809,5 +811,173 @@ test("PDF dossier generator: formats printable dossier with header, audit, calcu
   assert.ok(html.includes("Wells PE: 6 pkt"));
   assert.ok(html.includes("[S] Wywiad..."));
 });
+
+test("pharmacology: estimatePediatricWeight() matches APLS age tiers and clamping", () => {
+  assert.equal(P.estimatePediatricWeight(0.5), 6.5);
+  assert.equal(P.estimatePediatricWeight(1), 10);
+  assert.equal(P.estimatePediatricWeight(3), 14);
+  assert.equal(P.estimatePediatricWeight(5), 18);
+  assert.equal(P.estimatePediatricWeight(7), 28);
+  assert.equal(P.estimatePediatricWeight(12), 43);
+  assert.equal(P.estimatePediatricWeight(15), 53);
+  assert.equal(P.estimatePediatricWeight(25), 70); // clamped at 70
+  assert.equal(P.estimatePediatricWeight(-2), 10); // fallback
+});
+
+test("pharmacology: emergencyDoses() calculates exact adult vs pediatric doses", () => {
+  // Adult 70 kg
+  const adult = P.emergencyDoses(70, false);
+  assert.equal(adult.isChild, false);
+  assert.equal(adult.adrenalineAnaphylaxis.doseMg, 0.5);
+  assert.equal(adult.adrenalineAnaphylaxis.volumeMl, 0.5);
+  assert.equal(adult.adrenalineCardiacArrest.doseMg, 1.0);
+  assert.equal(adult.adrenalineCardiacArrest.volumeMl, 10.0);
+  assert.equal(adult.amiodaroneCardiacArrest.doseMgFirst, 300);
+  assert.equal(adult.amiodaroneCardiacArrest.volumeMlFirst, 6.0);
+  assert.equal(adult.amiodaroneCardiacArrest.doseMgSecond, 150);
+  assert.equal(adult.amiodaroneCardiacArrest.volumeMlSecond, 3.0);
+  assert.equal(adult.atropineBradycardia.doseMg, 0.5);
+  assert.equal(adult.midazolamSeizures.doseMg, 10); // clamped at 10
+  assert.ok(adult.fluidResuscitation.doseDescription.includes("2100 ml"));
+
+  // Child 15 kg
+  const child = P.emergencyDoses(15, true);
+  assert.equal(child.isChild, true);
+  assert.equal(child.adrenalineAnaphylaxis.doseMg, 0.15);
+  assert.equal(child.adrenalineAnaphylaxis.volumeMl, 0.15);
+  assert.equal(child.adrenalineCardiacArrest.doseMg, 0.15);
+  assert.equal(child.adrenalineCardiacArrest.volumeMl, 1.5);
+  assert.equal(child.amiodaroneCardiacArrest.doseMgFirst, 75);
+  assert.equal(child.amiodaroneCardiacArrest.volumeMlFirst, 1.5);
+  assert.equal(child.atropineBradycardia.doseMg, 0.3);
+  assert.equal(child.midazolamSeizures.doseMg, 3.0);
+  assert.ok(child.fluidResuscitation.doseDescription.includes("300 ml"));
+});
+
+test("pharmacology: hollidaySegar() calculates daily, hourly, and drop rates across all tiers", () => {
+  // Tier 1: <= 10 kg
+  const hs8 = P.hollidaySegar(8);
+  assert.equal(hs8.dailyMl, 800);
+  assert.equal(hs8.hourlyMl, 32);
+  assert.equal(hs8.dropRateMin, 11);
+
+  // Tier 2: 11 - 20 kg
+  const hs15 = P.hollidaySegar(15);
+  assert.equal(hs15.dailyMl, 1250);
+  assert.equal(hs15.hourlyMl, 50);
+  assert.equal(hs15.dropRateMin, 17);
+
+  // Tier 3: > 20 kg
+  const hs70 = P.hollidaySegar(70);
+  assert.equal(hs70.dailyMl, 2500);
+  assert.equal(hs70.hourlyMl, 110);
+  assert.equal(hs70.dropRateMin, 37);
+});
+
+test("pharmacology: sodiumDeficit() calculates Adrogue-Madias parameters and safety warnings", () => {
+  const res = P.sodiumDeficit({
+    weightKg: 70,
+    sex: "m",
+    age: 45,
+    serumNa: 120,
+    targetNa: 130,
+    infusateNa: 513, // 3% NaCl
+  });
+
+  assert.equal(res.tbw, 42.0);
+  assert.equal(res.totalDeficitMmol, 420.0);
+  assert.equal(res.deltaNaPerLiter, 9.14);
+  assert.equal(res.requiredLiters, 1.09);
+  assert.ok(res.warning.includes("8-10 mmol/L/24h"));
+  assert.ok(res.warning.includes("osmotycznej mielinozy"));
+});
+
+test("pharmacology: acidBase() evaluates anion gap, delta gap, and bicarbonate deficit", () => {
+  // Severe HAGMA
+  const hagma = P.acidBase({ na: 140, cl: 104, hco3: 14, alb: 4.0, weightKg: 70 });
+  assert.equal(hagma.anionGap, 22.0);
+  assert.equal(hagma.correctedAG, 22.0);
+  assert.equal(hagma.isHAGMA, true);
+  assert.equal(hagma.deltaGap, 0.0);
+  assert.equal(hagma.bicarbDeficitMmol, 350.0);
+  assert.ok(hagma.interpretation.includes("HAGMA"));
+  assert.ok(hagma.interpretation.includes("MUDPILES"));
+
+  // Albumin-corrected AG in hypoalbuminemia
+  const hypoAlb = P.acidBase({ na: 140, cl: 110, hco3: 18, alb: 2.0, weightKg: 70 });
+  assert.equal(hypoAlb.anionGap, 12.0);
+  assert.equal(hypoAlb.correctedAG, 17.0); // 12 + 2.5 * (4 - 2) = 17
+  assert.equal(hypoAlb.isHAGMA, true);
+});
+
+test("pharmacology: convertOpioid() evaluates OME and breakthrough pain dose ranges", () => {
+  // Oral morphine 60 mg/d to IV morphine (factor 3)
+  const conv1 = P.convertOpioid({ drugFrom: "morphine_po", doseFrom: 60, drugTo: "morphine_iv" });
+  assert.equal(conv1.oralMorphineEquiv, 60.0);
+  assert.equal(conv1.convertedDose, 20.0);
+  assert.equal(conv1.breakthroughDose, 3.3);
+  assert.equal(conv1.breakthroughDoseRange, "2 - 3.3");
+
+  // Transdermal fentanyl patch 25 mcg/h to oral morphine
+  const conv2 = P.convertOpioid({ drugFrom: "fentanyl_patch_mcgh", doseFrom: 25, drugTo: "morphine_po" });
+  assert.equal(conv2.oralMorphineEquiv, 60.0);
+  assert.equal(conv2.convertedDose, 60.0);
+  assert.equal(conv2.breakthroughDoseRange, "6 - 10");
+});
+
+test("pharmacology: antibioticsNPOA contains Polish NPOA guidelines for core indications", () => {
+  const npoa = P.antibioticsNPOA;
+  assert.ok(Array.isArray(npoa));
+  assert.ok(npoa.length >= 7);
+
+  // CAP mild vs severe
+  const capMild = npoa.find((n) => n.category.includes("CAP") && n.subgroup.includes("0-1 pkt"));
+  assert.ok(capMild.firstLine.includes("Amoksycylina"));
+  const capSevere = npoa.find((n) => n.category.includes("CAP") && n.subgroup.includes("≥3 pkt"));
+  assert.ok(capSevere.firstLine.includes("Ceftriakson"));
+
+  // ZOMR with age >= 50 rule
+  const zomr = npoa.find((n) => n.category.includes("ZOMR"));
+  assert.ok(zomr.firstLine.includes("Ceftriakson") && zomr.firstLine.includes("Wankomycyna") && zomr.firstLine.includes("Deksametazon"));
+  assert.ok(zomr.alternative.includes("Ampicylin") && zomr.alternative.includes("Listeria"));
+
+  // Sepsis unknown source
+  const sepsis = npoa.find((n) => n.category.includes("Sepsa"));
+  assert.ok(sepsis.firstLine.includes("Ceftriakson") || sepsis.firstLine.includes("Cefotaksym"));
+  assert.ok(sepsis.firstLine.includes("Gentamycyna"));
+});
+
+test("visit session & SOAP report: integrates planned drugs, fluids, and antibiotics into [P] PLAN", () => {
+  function formatSOAPPlan(pharmacyItems, dispoItems = []) {
+    const lines = [];
+    lines.push("[P] POSTĘPOWANIE, ZALECENIA I DYSPOZYCJA (PLAN)");
+    if (pharmacyItems && pharmacyItems.length > 0) {
+      lines.push("• Zaordynowana farmakoterapia, płyny i antybiotykoterapia:");
+      pharmacyItems.forEach((item) => {
+        lines.push(`  * ${item.name}: ${item.dose} (${item.route || "i.v."})${item.notes ? ` — ${item.notes}` : ""}`);
+      });
+    }
+    if (dispoItems.length > 0) {
+      lines.push("• Zalecenia dyspozycyjne i dalsza opieka:");
+      dispoItems.forEach((item) => lines.push(`  - ${item}`));
+    }
+    return lines.join("\n");
+  }
+
+  const samplePharmacy = [
+    { name: "Adrenalina (Anafilaksja)", dose: "0.5 mg (0.5 ml)", route: "i.m.", notes: "Powtórzyć po 5-10 min" },
+    { name: "Płynoterapia w sepsie", dose: "2100 ml", route: "i.v.", notes: "30 ml/kg w 3h" },
+    { name: "Amoksycylina", dose: "3x 1000 mg p.o.", route: "p.o.", notes: "NPOA CAP" },
+  ];
+
+  const planText = formatSOAPPlan(samplePharmacy, ["Hospitalizacja na OIT"]);
+  assert.ok(planText.includes("[P] POSTĘPOWANIE, ZALECENIA I DYSPOZYCJA (PLAN)"));
+  assert.ok(planText.includes("Zaordynowana farmakoterapia, płyny i antybiotykoterapia:"));
+  assert.ok(planText.includes("Adrenalina (Anafilaksja): 0.5 mg (0.5 ml) (i.m.) — Powtórzyć po 5-10 min"));
+  assert.ok(planText.includes("Płynoterapia w sepsie: 2100 ml (i.v.) — 30 ml/kg w 3h"));
+  assert.ok(planText.includes("Amoksycylina: 3x 1000 mg p.o. (p.o.) — NPOA CAP"));
+  assert.ok(planText.includes("Hospitalizacja na OIT"));
+});
+
 
 

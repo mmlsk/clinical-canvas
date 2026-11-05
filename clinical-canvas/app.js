@@ -29,7 +29,17 @@
   const visitSession = {
     history: [],
     calculators: [],
+    pharmacy: [],
   };
+  let currentPharmTab = "rko",
+    currentPharmWeight = 70,
+    currentPharmAge = null,
+    currentPharmIsChild = false;
+  const sodiumInputs = { serumNa: 120, targetNa: 130, infusateNa: 154, sex: "m", age: 45 };
+  const acidBaseInputs = { na: 140, cl: 104, hco3: 24, alb: 4.0 };
+  const opioidInputs = { drugFrom: "morphine_po", doseFrom: 60, drugTo: "morphine_iv" };
+  let npoaSearch = "",
+    npoaCategory = "all";
   let undo = [],
     redo = [],
     pendingSave,
@@ -535,7 +545,7 @@
   function updateSOAPBadge() {
     const badge = $("soap-badge");
     if (badge) {
-      const count = visitSession.history.length;
+      const count = visitSession.history.length + (visitSession.pharmacy?.length || 0);
       badge.textContent = count;
       badge.hidden = count === 0;
     }
@@ -888,7 +898,12 @@
       </section>`;
     }
 
-    panel.innerHTML = `<div class="detail-head"><div class="kicker">${escape(TYPES[n.type])} · ${n.cohort === "a" ? "DOROŚLI" : n.cohort === "p" ? "DZIECI" : "WSPÓLNE"}</div><h2>${escape(n.title)}</h2><div class="meta">${n.custom ? "Treść własna / edytowana. Wymaga ponownej weryfikacji." : `Synteza źródeł sprawdzona: ${D.reviewed}. Nie oznacza aktualizacji wytycznej w tym dniu.`}</div><div class="detail-toolbar"><button data-action="edit">Edytuj krok</button><button data-action="child">+ Gałąź</button>${calculator ? `<button data-action="calculate" data-score="${calculator}">Oblicz ${calculator.toUpperCase()}</button>` : ""}</div></div><div class="detail-body"><p>${escape(d.body || "Brak opisu — możesz dodać własny.")}</p>${decisionCompartmentHTML}${SECTIONS.map(
+    const activeWeight = currentPharmWeight || (cohort === "p" ? 15 : 70);
+    const activeChild = cohort === "p" || activeWeight < 40;
+    const contextualDrugs = findNodeContextualDrugs(n, activeWeight, activeChild);
+    const tileDrugHTML = renderTileDrugBox(contextualDrugs, activeWeight);
+
+    panel.innerHTML = `<div class="detail-head"><div class="kicker">${escape(TYPES[n.type])} · ${n.cohort === "a" ? "DOROŚLI" : n.cohort === "p" ? "DZIECI" : "WSPÓLNE"}</div><h2>${escape(n.title)}</h2><div class="meta">${n.custom ? "Treść własna / edytowana. Wymaga ponownej weryfikacji." : `Synteza źródeł sprawdzona: ${D.reviewed}. Nie oznacza aktualizacji wytycznej w tym dniu.`}</div><div class="detail-toolbar"><button data-action="edit">Edytuj krok</button><button data-action="child">+ Gałąź</button>${calculator ? `<button data-action="calculate" data-score="${calculator}">Oblicz ${calculator.toUpperCase()}</button>` : ""}</div></div><div class="detail-body"><p>${escape(d.body || "Brak opisu — możesz dodać własny.")}</p>${decisionCompartmentHTML}${tileDrugHTML}${SECTIONS.map(
       ([key, label]) =>
         list(d[key]).length
           ? `<section class="detail-section ${key === "red" ? "red" : ""}"><h3>${label}</h3><ul>${list(
@@ -1894,6 +1909,12 @@
 
     // P - Plan
     lines.push("[P] POSTĘPOWANIE, ZALECENIA I DYSPOZYCJA (PLAN)");
+    if (visitSession.pharmacy && visitSession.pharmacy.length > 0) {
+      lines.push("• Zaordynowana farmakoterapia, płyny i antybiotykoterapia:");
+      visitSession.pharmacy.forEach((item) => {
+        lines.push(`  * ${item.name}: ${item.dose} (${item.route || "i.v."})${item.notes ? ` — ${item.notes}` : ""}`);
+      });
+    }
     if (dispoList.size > 0) {
       lines.push("• Zalecenia dyspozycyjne i dalsza opieka:");
       dispoList.forEach((item) => lines.push(`  - ${item}`));
@@ -1939,6 +1960,7 @@
   function resetSession() {
     visitSession.history = [];
     visitSession.calculators = [];
+    visitSession.pharmacy = [];
     checkedVars.clear();
     activeBranch = null;
     updateSOAPBadge();
@@ -2089,6 +2111,17 @@
       </div>`;
     }
 
+    const activeWeight = currentPharmWeight || (cohort === "p" ? 15 : 70);
+    const activeChild = cohort === "p" || activeWeight < 40;
+    const contextualDrugs = findNodeContextualDrugs(n, activeWeight, activeChild);
+    if (contextualDrugs.length > 0) {
+      bodyHTML += `
+      <div class="wt-card">
+        <h3><span>Sugerowana farmakoterapia doraźna (${activeWeight} kg)</span></h3>
+        ${renderTileDrugBox(contextualDrugs, activeWeight)}
+      </div>`;
+    }
+
     if (outgoing.length > 0) {
       bodyHTML += `
       <div class="wt-card">
@@ -2225,6 +2258,30 @@
                   <td><b>${c.total != null ? c.total : "NT"}${c.max ? " / " + c.max : ""} pkt</b></td>
                   <td>${escape(c.headline)}</td>
                   <td>${escape(c.action || "—")}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </section>
+      ` : ""}
+
+      ${visitSession.pharmacy && visitSession.pharmacy.length > 0 ? `
+        <section class="dossier-section">
+          <h2>Farmakoterapia Doraźna, Płynoterapia i Antybiotykoterapia ([P] Plan)</h2>
+          <table class="dossier-table">
+            <thead>
+              <tr>
+                <th>Lek / Płyn</th>
+                <th>Dawka i Droga</th>
+                <th>Wskazanie / Uwagi</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${visitSession.pharmacy.map((p) => `
+                <tr>
+                  <td><strong>${escape(p.name)}</strong></td>
+                  <td><b>${escape(p.dose)}</b> (${escape(p.route || "i.v.")})</td>
+                  <td>${escape(p.notes || "Zgodnie z protokołem")}</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -2375,6 +2432,663 @@
     }
   });
 
+  // --- Clinical Pharmacology & Emergency Therapeutics Suite ---
+  function addPrescription(item) {
+    if (!item || !item.name) return;
+    const exists = visitSession.pharmacy.some(
+      (p) => p.name === item.name && p.dose === item.dose
+    );
+    if (!exists) {
+      visitSession.pharmacy.push({
+        name: item.name,
+        dose: item.dose,
+        route: item.route || "i.v.",
+        notes: item.notes || "",
+        timestamp: Date.now(),
+      });
+      updateSOAPBadge();
+      toast(`Dodano do planu: ${item.name} (${item.dose})`);
+    } else {
+      toast(`Pozycja "${item.name}" znajduje się już w planie leczenia.`);
+    }
+  }
+
+  function findNodeContextualDrugs(node, weightKg, isChild) {
+    const P = (typeof window !== "undefined" && window.ClinicalPharmacology) || (typeof globalThis !== "undefined" && globalThis.ClinicalPharmacology);
+    if (!node || !P) return [];
+    const text = ((node.title || "") + " " + (node.data?.body || "") + " " + list(node.data?.red).join(" ")).toLowerCase();
+    const ed = P.emergencyDoses(weightKg, isChild);
+    const items = [];
+
+    if (/rko|asystol|pea|migotan|zatrzyman|defibryl/.test(text)) {
+      items.push({ name: "Adrenalina (RKO ALS/EPLS)", dose: `${ed.adrenalineCardiacArrest.doseMg} mg (${ed.adrenalineCardiacArrest.volumeMl} ml 1:10 000)`, route: "i.v. / i.o.", notes: ed.adrenalineCardiacArrest.notes });
+      items.push({ name: "Amiodaron (RKO)", dose: `I dawka ${ed.amiodaroneCardiacArrest.doseMgFirst} mg (${ed.amiodaroneCardiacArrest.volumeMlFirst} ml), II dawka ${ed.amiodaroneCardiacArrest.doseMgSecond} mg`, route: "i.v. / i.o.", notes: ed.amiodaroneCardiacArrest.notes });
+    }
+    if (/anafilak|uczuleni|obrzęk naczynioruchow|pokrzywk/.test(text)) {
+      items.push({ name: "Adrenalina (Anafilaksja)", dose: `${ed.adrenalineAnaphylaxis.doseMg} mg (${ed.adrenalineAnaphylaxis.volumeMl} ml 1:1000)`, route: "i.m.", notes: ed.adrenalineAnaphylaxis.notes });
+      items.push({ name: "Hydrokortyzon", dose: `${ed.hydrocortisone.doseMg} mg`, route: "i.v.", notes: ed.hydrocortisone.notes });
+      items.push({ name: "Płynoterapia wstrząsu", dose: isChild ? `${Math.round(weightKg * 20)} ml (20 ml/kg)` : "500-1000 ml bolus", route: "i.v.", notes: ed.fluidResuscitation.notes });
+    }
+    if (/seps|posocznic|qsofa/.test(text)) {
+      items.push({ name: "Płynoterapia w sepsie (30 ml/kg)", dose: `${Math.round(weightKg * 30)} ml (PWE / Plasmalyte)`, route: "i.v. w ciągu 3h", notes: "Zgodnie z pakietem Surviving Sepsis Campaign / Sepsis-6." });
+      items.push({ name: "Antybiotyk empiryczny w sepsie", dose: "Ceftriakson 1x 2g i.v. + Gentamycyna 5-7 mg/kg", route: "i.v.", notes: "NPOA: pobrać posiewy krwi przed podaniem, czas < 1h." });
+    }
+    if (/astm|obturac|duszno|skurcz oskrzel|świsty/.test(text)) {
+      items.push({ name: "Salbutamol nebulizacja", dose: `${ed.salbutamolNebulization.doseMg} mg`, route: "wziewnie z tlenem", notes: ed.salbutamolNebulization.notes });
+      items.push({ name: "Bromek ipratropium", dose: `${ed.ipratropiumNebulization.doseMg} mg`, route: "wziewnie", notes: ed.ipratropiumNebulization.notes });
+      items.push({ name: "Hydrokortyzon", dose: `${ed.hydrocortisone.doseMg} mg`, route: "i.v.", notes: ed.hydrocortisone.notes });
+    }
+    if (/drgawk|padaczk|stan padaczkowy/.test(text)) {
+      items.push({ name: "Midazolam", dose: `${ed.midazolamSeizures.doseMg} mg (${ed.midazolamSeizures.volumeMl} ml)`, route: "b.u.c. / i.m.", notes: ed.midazolamSeizures.notes });
+      items.push({ name: "Diazepam wlewka doodbytnicza", dose: `${ed.diazepamSeizures.doseMg} mg`, route: "p.r.", notes: ed.diazepamSeizures.notes });
+    }
+    if (/hipoglikem|glukoz|cukrzyc/.test(text)) {
+      items.push({ name: "Glukoza i.v.", dose: ed.glucoseHypoglycemia.doseDescription, route: "i.v.", notes: ed.glucoseHypoglycemia.notes });
+    }
+    if (/bólu|ból |analgez|morfin|nasilony ból/.test(text)) {
+      items.push({ name: "Paracetamol", dose: isChild ? `${Math.round(weightKg * 15)} mg (15 mg/kg)` : "1000 mg", route: "i.v. / p.o.", notes: "Co 6h. Max 60 mg/kg/d u dzieci lub 4000 mg/d u dorosłych." });
+      items.push({ name: isChild ? "Ibuprofen" : "Ketoprofen", dose: isChild ? `${Math.round(weightKg * 10)} mg (10 mg/kg)` : "100 mg", route: isChild ? "p.o." : "i.v. / p.o.", notes: isChild ? "Co 8h p.o." : "Co 12h powoli i.v. lub p.o." });
+      items.push({ name: "Morfina", dose: isChild ? `${+(weightKg * 0.1).toFixed(1)} mg (0.1 mg/kg)` : "2-5 mg miareczkowana", route: "i.v. / s.c.", notes: "Miareczkować co 5-10 min do ustąpienia bólu (VAS < 4)." });
+    }
+    if (/zapalenie płuc|pneumon|curb/.test(text)) {
+      items.push({ name: "Antybiotyk CAP (NPOA)", dose: "Amoksycylina 3x 1000 mg p.o. (lub Augmentin 3x 1.2g i.v. + Klarytromycyna 2x 500 mg)", route: "p.o. / i.v.", notes: "Dobrać do skali CURB-65. Szczegóły w leksykonie NPOA." });
+    }
+    if (/moczow|zum|odmiedniczk/.test(text)) {
+      items.push({ name: "Antybiotyk ZUM (NPOA)", dose: "Fosfomycyna 3g p.o. jednorazowo LUB Ciprofloksacyna 2x 500 mg p.o. (OOZN)", route: "p.o. / i.v.", notes: "NPOA 2024: unikać fluorochinolonów w niepowikłanym pęcherzu." });
+    }
+
+    return items;
+  }
+
+  function renderTileDrugBox(items, weightKg) {
+    if (!items || items.length === 0) return "";
+    return `
+      <section class="tile-drug-box">
+        <div class="tile-drug-head">
+          <span class="tile-drug-title">💊 Sugerowana farmakoterapia doraźna (${weightKg} kg)</span>
+          <button type="button" class="pharm-quick-open-btn" data-action="open-pharm">Otwórz leksykon ➔</button>
+        </div>
+        <div class="tile-drug-list">
+          ${items.map((item) => {
+            const isAdded = visitSession.pharmacy.some((p) => p.name === item.name && p.dose === item.dose);
+            return `
+              <div class="tile-drug-item">
+                <div class="tile-drug-item-info">
+                  <strong>${escape(item.name)}</strong>: <span>${escape(item.dose)}</span> <em style="color:#555">(${escape(item.route)})</em>
+                  ${item.notes ? `<div class="tile-drug-notes">${escape(item.notes)}</div>` : ""}
+                </div>
+                <button type="button" class="tile-drug-add-btn ${isAdded ? "added" : ""}" data-drug-name="${escape(item.name)}" data-drug-dose="${escape(item.dose)}" data-drug-route="${escape(item.route)}" data-drug-notes="${escape(item.notes)}">
+                  ${isAdded ? "✓ W planie" : "+ Dołącz"}
+                </button>
+              </div>`;
+          }).join("")}
+        </div>
+      </section>`;
+  }
+
+  function updatePharmPatientBar() {
+    const weightInput = $("pharm-weight");
+    const popBadge = $("pharm-pop-badge");
+    if (!weightInput || !popBadge) return;
+    const w = Math.max(2, parseFloat(weightInput.value) || 70);
+    currentPharmWeight = w;
+    currentPharmIsChild = cohort === "p" || w < 40;
+    if (currentPharmIsChild) {
+      popBadge.textContent = `PEDIATRIA (${w} kg < 40 kg)`;
+      popBadge.classList.add("peds");
+    } else {
+      popBadge.textContent = `DOROSŁY (${w} kg ≥ 40 kg)`;
+      popBadge.classList.remove("peds");
+    }
+  }
+
+  function openPharmModal(tab = null) {
+    const dialog = $("pharm-dialog");
+    if (!dialog) return;
+    if (tab) currentPharmTab = tab;
+    const weightInput = $("pharm-weight");
+    if (weightInput) weightInput.value = currentPharmWeight;
+    updatePharmPatientBar();
+    renderPharmModal(currentPharmTab);
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function closePharmModal() {
+    const dialog = $("pharm-dialog");
+    if (dialog?.open) dialog.close();
+  }
+
+  function renderPharmModal(tab = "rko") {
+    currentPharmTab = tab;
+    const P = (typeof window !== "undefined" && window.ClinicalPharmacology) || (typeof globalThis !== "undefined" && globalThis.ClinicalPharmacology);
+    const panelEl = $("pharm-panel");
+    const descEl = $("pharm-description");
+    if (!panelEl || !descEl || !P) return;
+
+    // Update tab bar state
+    const tabs = document.querySelectorAll(".pharm-tab");
+    tabs.forEach((t) => {
+      const isSel = t.dataset.pharmTab === tab;
+      t.setAttribute("aria-selected", String(isSel));
+    });
+
+    const w = currentPharmWeight;
+    const isChild = currentPharmIsChild;
+
+    if (tab === "rko") {
+      descEl.textContent = "Dawkowanie leków stanów nagłych i resuscytacji krążeniowo-oddechowej (ALS/EPLS) wyliczane w czasie rzeczywistym dla masy pacjenta.";
+      panelEl.innerHTML = renderPharmRKO(P, w, isChild);
+    } else if (tab === "fluids") {
+      descEl.textContent = "Płynoterapia podstawowa (Holliday-Segar), resuscytacja we wstrząsie septycznym oraz precyzyjne kalkulatory sodu (Adrogue-Madias) i równowagi kwasowo-zasadowej.";
+      panelEl.innerHTML = renderPharmFluids(P, w, isChild);
+    } else if (tab === "pain") {
+      descEl.textContent = "Drabina analgetyczna WHO, dawkowanie nieopioidów oraz kalkulator równoważnika doustnego morfiny (OME) z dawkami ratunkowymi bólu przebijającego.";
+      panelEl.innerHTML = renderPharmPain(P, w, isChild);
+    } else if (tab === "npoa") {
+      descEl.textContent = "Empiryczna antybiotykoterapia pierwszego rzutu i alternatywna wg zaleceń Narodowego Programu Ochrony Antybiotyków (NPOA 2024-2026).";
+      panelEl.innerHTML = renderPharmNPOA(P, w, isChild);
+    }
+  }
+
+  function renderPharmRKO(P, w, isChild) {
+    const d = P.emergencyDoses(w, isChild);
+    const items = [
+      {
+        title: "Adrenalina (Anafilaksja)",
+        sub: d.adrenalineAnaphylaxis.indication,
+        prep: d.adrenalineAnaphylaxis.prep,
+        dose: `${d.adrenalineAnaphylaxis.doseMg} mg (${d.adrenalineAnaphylaxis.volumeMl} ml)`,
+        route: d.adrenalineAnaphylaxis.route,
+        notes: d.adrenalineAnaphylaxis.notes,
+      },
+      {
+        title: "Adrenalina (RKO / Zatrzymanie krążenia)",
+        sub: d.adrenalineCardiacArrest.indication,
+        prep: d.adrenalineCardiacArrest.prep,
+        dose: `${d.adrenalineCardiacArrest.doseMg} mg (${d.adrenalineCardiacArrest.volumeMl} ml)`,
+        route: d.adrenalineCardiacArrest.route,
+        notes: d.adrenalineCardiacArrest.notes,
+      },
+      {
+        title: "Amiodaron (RKO - VT/VF bez tętna)",
+        sub: d.amiodaroneCardiacArrest.indication,
+        prep: d.amiodaroneCardiacArrest.prep,
+        dose: `I dawka: ${d.amiodaroneCardiacArrest.doseMgFirst} mg (${d.amiodaroneCardiacArrest.volumeMlFirst} ml), II dawka: ${d.amiodaroneCardiacArrest.doseMgSecond} mg (${d.amiodaroneCardiacArrest.volumeMlSecond} ml)`,
+        route: d.amiodaroneCardiacArrest.route,
+        notes: d.amiodaroneCardiacArrest.notes,
+      },
+      {
+        title: "Atropina (Objawowa Bradykardia)",
+        sub: d.atropineBradycardia.indication,
+        prep: d.atropineBradycardia.prep,
+        dose: `${d.atropineBradycardia.doseMg} mg (${d.atropineBradycardia.volumeMl} ml)`,
+        route: d.atropineBradycardia.route,
+        notes: d.atropineBradycardia.notes,
+      },
+      {
+        title: "Midazolam (Napad drgawkowy)",
+        sub: d.midazolamSeizures.indication,
+        prep: d.midazolamSeizures.prep,
+        dose: `${d.midazolamSeizures.doseMg} mg (${d.midazolamSeizures.volumeMl} ml)`,
+        route: d.midazolamSeizures.route,
+        notes: d.midazolamSeizures.notes,
+      },
+      {
+        title: "Diazepam (Wlewka doodbytnicza)",
+        sub: d.diazepamSeizures.indication,
+        prep: d.diazepamSeizures.prep,
+        dose: `${d.diazepamSeizures.doseMg} mg`,
+        route: d.diazepamSeizures.route,
+        notes: d.diazepamSeizures.notes,
+      },
+      {
+        title: "Salbutamol (Nebulizacja z tlenem)",
+        sub: d.salbutamolNebulization.indication,
+        prep: d.salbutamolNebulization.prep,
+        dose: `${d.salbutamolNebulization.doseMg} mg`,
+        route: d.salbutamolNebulization.route,
+        notes: d.salbutamolNebulization.notes,
+      },
+      {
+        title: "Bromek ipratropium (Nebulizacja)",
+        sub: d.ipratropiumNebulization.indication,
+        prep: d.ipratropiumNebulization.prep,
+        dose: `${d.ipratropiumNebulization.doseMg} mg`,
+        route: d.ipratropiumNebulization.route,
+        notes: d.ipratropiumNebulization.notes,
+      },
+      {
+        title: "Hydrokortyzon",
+        sub: d.hydrocortisone.indication,
+        prep: "Ampułki 100 mg / 250 mg",
+        dose: `${d.hydrocortisone.doseMg} mg`,
+        route: d.hydrocortisone.route,
+        notes: d.hydrocortisone.notes,
+      },
+      {
+        title: "Glukoza (Hipoglikemia objawowa)",
+        sub: d.glucoseHypoglycemia.indication,
+        prep: d.glucoseHypoglycemia.prep,
+        dose: d.glucoseHypoglycemia.doseDescription,
+        route: d.glucoseHypoglycemia.route,
+        notes: d.glucoseHypoglycemia.notes,
+      },
+      {
+        title: "Płynoterapia we wstrząsie (Bolus)",
+        sub: d.fluidResuscitation.indication,
+        prep: d.fluidResuscitation.solution,
+        dose: d.fluidResuscitation.doseDescription,
+        route: d.fluidResuscitation.route,
+        notes: d.fluidResuscitation.notes,
+      },
+    ];
+
+    return `
+      <div class="pharm-grid">
+        ${items.map((item) => {
+          const isAdded = visitSession.pharmacy.some((p) => p.name === item.title && p.dose === item.dose);
+          return `
+            <div class="pharm-card">
+              <h4><span>${escape(item.title)}</span> <small style="font-size:11px;color:var(--muted)">${escape(item.route)}</small></h4>
+              <div class="pharm-card-meta">${escape(item.sub)} · <em>${escape(item.prep)}</em></div>
+              <div class="pharm-card-dose">Dawka: ${escape(item.dose)}</div>
+              <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:12px;">${escape(item.notes)}</div>
+              <button type="button" class="pharm-add-btn ${isAdded ? "added" : ""}" data-drug-name="${escape(item.title)}" data-drug-dose="${escape(item.dose)}" data-drug-route="${escape(item.route)}" data-drug-notes="${escape(item.notes)}">
+                ${isAdded ? "✓ W planie" : "+ Dołącz do planu"}
+              </button>
+            </div>`;
+        }).join("")}
+      </div>`;
+  }
+
+  function renderPharmFluids(P, w, isChild) {
+    const hs = P.hollidaySegar(w);
+    const sepsisBolus = Math.round(w * 30);
+    const naDef = P.sodiumDeficit({
+      weightKg: w,
+      sex: sodiumInputs.sex,
+      age: sodiumInputs.age,
+      serumNa: sodiumInputs.serumNa,
+      targetNa: sodiumInputs.targetNa,
+      infusateNa: sodiumInputs.infusateNa,
+    });
+    const ab = P.acidBase({
+      na: acidBaseInputs.na,
+      cl: acidBaseInputs.cl,
+      hco3: acidBaseInputs.hco3,
+      alb: acidBaseInputs.alb,
+      weightKg: w,
+    });
+
+    const isHsAdded = visitSession.pharmacy.some((p) => p.name.includes("Holliday-Segar"));
+    const isSepsisAdded = visitSession.pharmacy.some((p) => p.name.includes("Sepsa (30 ml/kg)"));
+    const isNaAdded = visitSession.pharmacy.some((p) => p.name.includes("Korekta hiponatremii"));
+    const isAbAdded = visitSession.pharmacy.some((p) => p.name.includes("Korekta kwasicy"));
+
+    return `
+      <div class="pharm-grid">
+        <!-- Holliday-Segar Maintenance -->
+        <div class="pharm-card">
+          <h4><span>1. Płynoterapia podtrzymująca (Holliday-Segar)</span></h4>
+          <div class="pharm-card-meta">Standardowe dobowe zapotrzebowanie na płyny dla masy ${w} kg</div>
+          <div class="pharm-card-dose">${hs.dailyMl} ml / dobę (${hs.hourlyMl} ml / godz.)</div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
+            Szybkość wlewu grawitacyjnego: <strong>${hs.dropRateMin} kropli/min</strong> (standardowy aparat 20 kropli/ml).<br>
+            Reguła 4-2-1: 100 ml/kg na pierwsze 10 kg, 50 ml/kg na kolejne 10 kg, 20 ml/kg powyżej 20 kg.
+          </div>
+          <button type="button" class="pharm-add-btn ${isHsAdded ? "added" : ""}" data-drug-name="Płyny podtrzymujące (Holliday-Segar)" data-drug-dose="${hs.dailyMl} ml/24h (${hs.hourlyMl} ml/h)" data-drug-route="i.v." data-drug-notes="Płyn wieloelektrolitowy lub 0.9% NaCl z 5% Glukozą">
+            ${isHsAdded ? "✓ W planie" : "+ Dołącz nawadnianie podtrzymujące"}
+          </button>
+        </div>
+
+        <!-- Sepsis Resuscitation -->
+        <div class="pharm-card">
+          <h4><span>2. Resuscytacja w sepsie (Surviving Sepsis Campaign)</span></h4>
+          <div class="pharm-card-meta">Zalecana objętość początkowa w hipoperfuzji lub wstrząsie septycznym</div>
+          <div class="pharm-card-dose">Bolus 30 ml/kg = ${sepsisBolus} ml w ciągu pierwszych 3h</div>
+          <div style="font-size:12px;color:var(--muted);line-height:1.5;margin-bottom:12px;">
+            Zalecane krystaloidy zbilansowane (PWE, Plasmalyte) przed 0.9% NaCl. Monitorować odpowiedź hemodynamiczną (MAP ≥65 mmHg, powrót włośniczkowy, diureza, spadek mleczanów).
+          </div>
+          <button type="button" class="pharm-add-btn ${isSepsisAdded ? "added" : ""}" data-drug-name="Resuscytacja płynowa w sepsie (30 ml/kg)" data-drug-dose="${sepsisBolus} ml w 3h" data-drug-route="i.v." data-drug-notes="Krystaloid zbilansowany (PWE / Plasmalyte), kontrola objawów przewodnienia">
+            ${isSepsisAdded ? "✓ W planie" : "+ Dołącz bolus sepsy do planu"}
+          </button>
+        </div>
+
+        <!-- Adrogue-Madias Sodium Calculator -->
+        <div class="pharm-card" style="grid-column: 1 / -1;">
+          <h4><span>3. Deficyt sodu i kalkulator Adrogue-Madias (Hipo-/Hipernatremia)</span></h4>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="na-serum">Aktualny sód (Na+) w surowicy [mmol/L]:</label>
+              <input id="na-serum" type="number" value="${sodiumInputs.serumNa}" min="90" max="180">
+            </div>
+            <div class="pharm-field">
+              <label for="na-target">Docelowy sód (Na+) [mmol/L]:</label>
+              <input id="na-target" type="number" value="${sodiumInputs.targetNa}" min="100" max="160">
+            </div>
+          </div>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="na-infusate">Roztwór infuzyjny:</label>
+              <select id="na-infusate">
+                <option value="154" ${sodiumInputs.infusateNa === 154 ? "selected" : ""}>0.9% NaCl (154 mmol Na+/L)</option>
+                <option value="513" ${sodiumInputs.infusateNa === 513 ? "selected" : ""}>3% NaCl (513 mmol Na+/L - hipertoniczny)</option>
+              </select>
+            </div>
+            <div class="pharm-field">
+              <label for="na-sex">Płeć i wiek pacjenta (współczynnik TBW):</label>
+              <select id="na-sex">
+                <option value="m" ${sodiumInputs.sex === "m" ? "selected" : ""}>Mężczyzna (TBW 60% / 50% starszy)</option>
+                <option value="f" ${sodiumInputs.sex === "f" ? "selected" : ""}>Kobieta (TBW 50% / 45% starsza)</option>
+              </select>
+            </div>
+          </div>
+          <div class="pharm-result-box">
+            <strong>Całkowita woda ustrojowa (TBW):</strong> ${naDef.tbw} L |
+            <strong>Całkowity deficyt sodu:</strong> ${naDef.totalDeficitMmol} mmol Na+<br>
+            <strong>Spodziewany przyrost Na+ po 1L roztworu:</strong> ΔNa+ = ${naDef.deltaNaPerLiter > 0 ? "+" : ""}${naDef.deltaNaPerLiter} mmol/L<br>
+            <strong>Wymagana objętość płynu do osiągnięcia celu:</strong> ${naDef.requiredLiters} L (${Math.round(naDef.requiredLiters * 1000)} ml)
+          </div>
+          <div class="pharm-alert">
+            <strong>⚠️ KRYTYCZNE OSTRZEŻENIE BEZPIECZEŃSTWA:</strong> ${naDef.warning}
+          </div>
+          <button type="button" class="pharm-add-btn ${isNaAdded ? "added" : ""}" data-drug-name="Korekta hiponatremii (Adrogue-Madias)" data-drug-dose="${naDef.requiredLiters} L płynu (deficyt ${naDef.totalDeficitMmol} mmol)" data-drug-route="i.v." data-drug-notes="Maks. zmiana 8-10 mmol/L/24h. Kontrola elektrolitów co 2-4h.">
+            ${isNaAdded ? "✓ W planie" : "+ Dołącz korektę sodu do planu"}
+          </button>
+        </div>
+
+        <!-- Acid-Base and Anion Gap -->
+        <div class="pharm-card" style="grid-column: 1 / -1;">
+          <h4><span>4. Luka Anionowa (AG), Delta Gap i Deficyt Wodorowęglanów</span></h4>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="ab-na">Sód (Na+) [mmol/L]:</label>
+              <input id="ab-na" type="number" value="${acidBaseInputs.na}">
+            </div>
+            <div class="pharm-field">
+              <label for="ab-cl">Chlorki (Cl-) [mmol/L]:</label>
+              <input id="ab-cl" type="number" value="${acidBaseInputs.cl}">
+            </div>
+          </div>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="ab-hco3">Wodorowęglany (HCO3-) w gazometrii [mmol/L]:</label>
+              <input id="ab-hco3" type="number" value="${acidBaseInputs.hco3}">
+            </div>
+            <div class="pharm-field">
+              <label for="ab-alb">Albumina w surowicy [g/dL]:</label>
+              <input id="ab-alb" type="number" step="0.1" value="${acidBaseInputs.alb}">
+            </div>
+          </div>
+          <div class="pharm-result-box">
+            <strong>Luka anionowa (AG):</strong> ${ab.anionGap} mEq/L (skorygowana o albuminę: <strong>${ab.correctedAG} mEq/L</strong>)<br>
+            <strong>Delta Gap:</strong> ${ab.deltaGap} mEq/L |
+            <strong>Wyliczony deficyt wodorowęglanów:</strong> ${ab.bicarbDeficitMmol} mmol HCO3-<br>
+            <strong>Ocena kliniczna:</strong> ${ab.interpretation}
+          </div>
+          <button type="button" class="pharm-add-btn ${isAbAdded ? "added" : ""}" data-drug-name="Korekta kwasicy metabolicznej" data-drug-dose="${ab.bicarbDeficitMmol > 0 ? `Deficyt ${ab.bicarbDeficitMmol} mmol HCO3- (podawać 1/2 dawki i.v.)` : "Monitorowanie RKZ"}" data-drug-route="i.v." data-drug-notes="${ab.interpretation.split(".")[0]}">
+            ${isAbAdded ? "✓ W planie" : "+ Dołącz plan leczenia kwasicy"}
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function renderPharmPain(P, w, isChild) {
+    const op = P.convertOpioid({
+      drugFrom: opioidInputs.drugFrom,
+      doseFrom: opioidInputs.doseFrom,
+      drugTo: opioidInputs.drugTo,
+    });
+
+    const isParaAdded = visitSession.pharmacy.some((p) => p.name.includes("Paracetamol"));
+    const isNsaidAdded = visitSession.pharmacy.some((p) => p.name.includes("NLPZ"));
+    const isMetaAdded = visitSession.pharmacy.some((p) => p.name.includes("Metamizol"));
+    const isOpAdded = visitSession.pharmacy.some((p) => p.name.includes("Schemat opioidowy"));
+
+    const paraDose = isChild ? `${Math.round(w * 15)} mg (15 mg/kg)` : "1000 mg";
+    const nsaidName = isChild ? "Ibuprofen" : "Ketoprofen";
+    const nsaidDose = isChild ? `${Math.round(w * 10)} mg (10 mg/kg)` : "100 mg";
+
+    return `
+      <div class="pharm-grid">
+        <!-- Non-opioids & WHO ladder -->
+        <div class="pharm-card">
+          <h4><span>1. Drabina Analgetyczna WHO · Stopień I (Nieopioidy)</span></h4>
+          <div class="pharm-card-meta">Dostosowane do masy ciała ${w} kg (${isChild ? "pediatria" : "dorośli"})</div>
+
+          <div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
+            <strong>Paracetamol:</strong> ${paraDose} co 6h p.o. / i.v. (max ${isChild ? "60 mg/kg/d" : "4000 mg/d"})
+            <div style="margin-top: 4px;">
+              <button type="button" class="pharm-add-btn ${isParaAdded ? "added" : ""}" data-drug-name="Paracetamol" data-drug-dose="${paraDose} co 6h" data-drug-route="p.o. / i.v." data-drug-notes="Brak działania przeciwzapalnego, bezpieczny żołądkowo">
+                ${isParaAdded ? "✓ W planie" : "+ Dodaj Paracetamol"}
+              </button>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--line);">
+            <strong>${nsaidName} (NLPZ):</strong> ${nsaidDose} ${isChild ? "co 8h p.o." : "co 12h i.v. / p.o."}
+            <div style="margin-top: 4px;">
+              <button type="button" class="pharm-add-btn ${isNsaidAdded ? "added" : ""}" data-drug-name="${nsaidName} (NLPZ)" data-drug-dose="${nsaidDose}" data-drug-route="${isChild ? "p.o." : "i.v. / p.o."}" data-drug-notes="Uwaga na wrzody, krwawienia i eGFR">
+                ${isNsaidAdded ? "✓ W planie" : `+ Dodaj ${nsaidName}`}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <strong>Metamizol (Pyralgina):</strong> ${isChild ? "10-15 mg/kg i.v./p.o." : "1000 mg co 8h i.v. / p.o."} (max 4g/d)
+            <div style="margin-top: 4px;">
+              <button type="button" class="pharm-add-btn ${isMetaAdded ? "added" : ""}" data-drug-name="Metamizol (Pyralgina)" data-drug-dose="${isChild ? `${Math.round(w * 12)} mg` : "1000 mg co 8h"}" data-drug-route="i.v. / p.o." data-drug-notes="Silny lek spazmolityczny i przeciwgorączkowy">
+                ${isMetaAdded ? "✓ W planie" : "+ Dodaj Metamizol"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Opioid Converter (OME) -->
+        <div class="pharm-card" style="grid-column: 1 / -1;">
+          <h4><span>2. Konwerter Równoważnika Doustnego Morfiny (OME / Equianalgesic)</span></h4>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="op-from">Aktualnie stosowany lek opioidowy:</label>
+              <select id="op-from">
+                <option value="morphine_po" ${opioidInputs.drugFrom === "morphine_po" ? "selected" : ""}>Morfina doustnie (p.o.)</option>
+                <option value="morphine_iv" ${opioidInputs.drugFrom === "morphine_iv" ? "selected" : ""}>Morfina dożylnie/podskórnie (i.v. / s.c.)</option>
+                <option value="oxycodone_po" ${opioidInputs.drugFrom === "oxycodone_po" ? "selected" : ""}>Oksykodon doustnie (p.o.)</option>
+                <option value="oxycodone_iv" ${opioidInputs.drugFrom === "oxycodone_iv" ? "selected" : ""}>Oksykodon dożylnie (i.v.)</option>
+                <option value="tramadol_po" ${opioidInputs.drugFrom === "tramadol_po" ? "selected" : ""}>Tramadol doustnie (p.o.)</option>
+                <option value="fentanyl_patch_mcgh" ${opioidInputs.drugFrom === "fentanyl_patch_mcgh" ? "selected" : ""}>Fentanyl plaster transdermalny (mcg/h)</option>
+              </select>
+            </div>
+            <div class="pharm-field">
+              <label for="op-dose">Dobowa dawka stosowana (mg/d lub mcg/h dla plastra):</label>
+              <input id="op-dose" type="number" min="0" step="5" value="${opioidInputs.doseFrom}">
+            </div>
+          </div>
+          <div class="pharm-field">
+            <label for="op-to">Docelowy lek, na który następuje zamiana:</label>
+            <select id="op-to">
+              <option value="morphine_po" ${opioidInputs.drugTo === "morphine_po" ? "selected" : ""}>Morfina doustnie (p.o.)</option>
+              <option value="morphine_iv" ${opioidInputs.drugTo === "morphine_iv" ? "selected" : ""}>Morfina dożylnie/podskórnie (i.v. / s.c.)</option>
+              <option value="oxycodone_po" ${opioidInputs.drugTo === "oxycodone_po" ? "selected" : ""}>Oksykodon doustnie (p.o.)</option>
+              <option value="oxycodone_iv" ${opioidInputs.drugTo === "oxycodone_iv" ? "selected" : ""}>Oksykodon dożylnie (i.v.)</option>
+              <option value="tramadol_po" ${opioidInputs.drugTo === "tramadol_po" ? "selected" : ""}>Tramadol doustnie (p.o.)</option>
+              <option value="fentanyl_patch_mcgh" ${opioidInputs.drugTo === "fentanyl_patch_mcgh" ? "selected" : ""}>Fentanyl plaster transdermalny (mcg/h)</option>
+            </select>
+          </div>
+          <div class="pharm-result-box">
+            <strong>Dobowy równoważnik doustnej morfiny (OME):</strong> ${op.oralMorphineEquiv} mg OME / dobę<br>
+            <strong>Równoważna wyliczona dawka leku docelowego:</strong> <b>${op.convertedDose}</b> mg/dobę (lub mcg/h)<br>
+            <strong>Zalecana bezpieczna dawka startowa przy rotacji (redukcja 25-50%):</strong> ${+(op.convertedDose * 0.5).toFixed(1)} – ${+(op.convertedDose * 0.75).toFixed(1)} mg/dobę<br>
+            <strong>Dawka ratunkowa na ból przebijający:</strong> <b>${op.breakthroughDoseRange} mg</b> (1/10 do 1/6 dawki dobowej)
+          </div>
+          <div class="pharm-alert">
+            <strong>⚠️ ZASADA ROTACJI OPIOIDÓW:</strong> ${op.notes}
+          </div>
+          <button type="button" class="pharm-add-btn ${isOpAdded ? "added" : ""}" data-drug-name="Schemat opioidowy (${op.drugTo})" data-drug-dose="${op.convertedDose} mg/d (ból przebijający: ${op.breakthroughDose} mg)" data-drug-route="wg protokołu" data-drug-notes="Równoważnik ${op.oralMorphineEquiv} mg OME/d. Redukcja dawki startowej o 25-50%.">
+            ${isOpAdded ? "✓ W planie" : "+ Dołącz schemat opioidowy do planu"}
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function renderPharmNPOA(P, w, isChild) {
+    const categories = ["all", "Pozaszpitalne zapalenie płuc (CAP)", "Zakażenia układu moczowego (ZUM)", "Sepsa o nieznanym punkcie wyjścia", "Zapalenie opon mózgowo-rdzeniowych (ZOMR)", "Zakażenia skóry i tkanek miękkich"];
+    const q = npoaSearch.toLowerCase().trim();
+
+    const filtered = P.antibioticsNPOA.filter((reg) => {
+      const matchCat = npoaCategory === "all" || reg.category === npoaCategory;
+      if (!matchCat) return false;
+      if (!q) return true;
+      const hay = (reg.category + " " + reg.subgroup + " " + reg.firstLine + " " + reg.alternative + " " + reg.notes).toLowerCase();
+      return hay.includes(q);
+    });
+
+    return `
+      <div>
+        <div class="pharm-calc-pair" style="margin-bottom: 14px;">
+          <div class="pharm-field">
+            <label for="npoa-category-select">Filtruj wg jednostki chorobowej:</label>
+            <select id="npoa-category-select">
+              ${categories.map((c) => `<option value="${escape(c)}" ${npoaCategory === c ? "selected" : ""}>${c === "all" ? "Wszystkie kategorie zaleceń NPOA" : escape(c)}</option>`).join("")}
+            </select>
+          </div>
+          <div class="pharm-field">
+            <label for="npoa-search-input">Szukaj antybiotyku lub objawu:</label>
+            <input id="npoa-search-input" type="search" placeholder="np. amoksycylina, posiew, alergia, ceftriakson..." value="${escape(npoaSearch)}">
+          </div>
+        </div>
+
+        <div class="pharm-alert" style="background:#f0fdf4;border-color:#bbf7d0;border-left-color:#16a34a;color:#14532d;margin-bottom:14px;">
+          <strong>🛡️ GŁÓWNE ZASADY NPOA:</strong> Zawsze pobierz krew lub materiał na posiew PRZED podaniem pierwszej dawki antybiotyku. W sepsie czas do podania <1h. Monitoruj stężenia wankomycyny i aminoglikozydów. Przy eGFR < 50 ml/min/1.73m² zweryfikuj dawkę leku.
+        </div>
+
+        <div class="pharm-grid">
+          ${filtered.map((reg) => {
+            const isAdded = visitSession.pharmacy.some((p) => p.name.includes(reg.subgroup) || p.dose.includes(reg.firstLine.split(" ")[0]));
+            return `
+              <div class="pharm-card">
+                <h4><span>${escape(reg.category)}</span></h4>
+                <div class="pharm-card-meta"><strong>${escape(reg.subgroup)}</strong></div>
+                <div class="pharm-card-dose" style="font-size:13px;line-height:1.45;">I rzut: ${escape(reg.firstLine)}</div>
+                <div style="font-size:12px;color:#444;line-height:1.45;margin-bottom:8px;">
+                  <strong>Alternatywa / alergia:</strong> ${escape(reg.alternative)}
+                </div>
+                <div style="font-size:11.5px;color:var(--muted);line-height:1.45;margin-bottom:12px;">
+                  <em>${escape(reg.notes)}</em>
+                </div>
+                <button type="button" class="pharm-add-btn ${isAdded ? "added" : ""}" data-drug-name="Antybiotyk: ${escape(reg.subgroup)}" data-drug-dose="${escape(reg.firstLine)}" data-drug-route="wg wskazań" data-drug-notes="Alternatywa: ${escape(reg.alternative)}">
+                  ${isAdded ? "✓ W planie" : "+ Dołącz schemat NPOA do planu"}
+                </button>
+              </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+  }
+
+  // Event handlers for Pharmacology Suite
+  const pharmBtn = $("pharm-btn");
+  if (pharmBtn) pharmBtn.onclick = () => openPharmModal();
+  const wtPharmBtn = $("wt-pharm-btn");
+  if (wtPharmBtn) wtPharmBtn.onclick = () => openPharmModal();
+  const pharmCloseBtn = $("pharm-close");
+  if (pharmCloseBtn) pharmCloseBtn.onclick = closePharmModal;
+
+  const pharmWeightInput = $("pharm-weight");
+  if (pharmWeightInput) {
+    pharmWeightInput.addEventListener("input", () => {
+      updatePharmPatientBar();
+      renderPharmModal(currentPharmTab);
+    });
+  }
+
+  const pharmEstBtn = $("pharm-est-btn");
+  if (pharmEstBtn) {
+    pharmEstBtn.onclick = () => {
+      const P = (typeof window !== "undefined" && window.ClinicalPharmacology) || (typeof globalThis !== "undefined" && globalThis.ClinicalPharmacology);
+      const ageVal = parseFloat($("pharm-age")?.value);
+      if (P && Number.isFinite(ageVal)) {
+        const est = P.estimatePediatricWeight(ageVal);
+        if (pharmWeightInput) pharmWeightInput.value = est;
+        updatePharmPatientBar();
+        renderPharmModal(currentPharmTab);
+        toast(`Oszacowano masę ciała: ${est} kg (APLS dla ${ageVal} lat)`);
+      } else {
+        toast("Podaj wiek dziecka w latach, aby oszacować wagę.");
+      }
+    };
+  }
+
+  const pharmTabsContainer = document.querySelector(".pharm-tabs");
+  if (pharmTabsContainer) {
+    pharmTabsContainer.addEventListener("click", (ev) => {
+      const tabBtn = ev.target.closest("[data-pharm-tab]");
+      if (tabBtn) {
+        renderPharmModal(tabBtn.dataset.pharmTab);
+      }
+    });
+  }
+
+  const pharmPanelEl = $("pharm-panel");
+  if (pharmPanelEl) {
+    pharmPanelEl.addEventListener("input", (ev) => {
+      const id = ev.target.id;
+      if (id === "na-serum") sodiumInputs.serumNa = parseFloat(ev.target.value) || 120;
+      else if (id === "na-target") sodiumInputs.targetNa = parseFloat(ev.target.value) || 130;
+      else if (id === "na-infusate") sodiumInputs.infusateNa = parseFloat(ev.target.value) || 154;
+      else if (id === "na-sex") sodiumInputs.sex = ev.target.value;
+      else if (id === "ab-na") acidBaseInputs.na = parseFloat(ev.target.value) || 140;
+      else if (id === "ab-cl") acidBaseInputs.cl = parseFloat(ev.target.value) || 104;
+      else if (id === "ab-hco3") acidBaseInputs.hco3 = parseFloat(ev.target.value) || 24;
+      else if (id === "ab-alb") acidBaseInputs.alb = parseFloat(ev.target.value) || 4.0;
+      else if (id === "op-from") opioidInputs.drugFrom = ev.target.value;
+      else if (id === "op-dose") opioidInputs.doseFrom = parseFloat(ev.target.value) || 0;
+      else if (id === "op-to") opioidInputs.drugTo = ev.target.value;
+      else if (id === "npoa-category-select") npoaCategory = ev.target.value;
+      else if (id === "npoa-search-input") npoaSearch = ev.target.value;
+      renderPharmModal(currentPharmTab);
+    });
+    pharmPanelEl.addEventListener("change", (ev) => {
+      const id = ev.target.id;
+      if (["na-infusate", "na-sex", "op-from", "op-to", "npoa-category-select"].includes(id)) {
+        if (id === "na-infusate") sodiumInputs.infusateNa = parseFloat(ev.target.value) || 154;
+        else if (id === "na-sex") sodiumInputs.sex = ev.target.value;
+        else if (id === "op-from") opioidInputs.drugFrom = ev.target.value;
+        else if (id === "op-to") opioidInputs.drugTo = ev.target.value;
+        else if (id === "npoa-category-select") npoaCategory = ev.target.value;
+        renderPharmModal(currentPharmTab);
+      }
+    });
+  }
+
+  const pharmAddPlanBtn = $("pharm-add-plan-btn");
+  if (pharmAddPlanBtn) {
+    pharmAddPlanBtn.onclick = () => {
+      closePharmModal();
+      openSOAPDialog();
+    };
+  }
+
+  document.addEventListener("click", (ev) => {
+    const drugBtn = ev.target.closest(".tile-drug-add-btn, .pharm-add-btn");
+    if (drugBtn) {
+      const name = drugBtn.dataset.drugName;
+      const dose = drugBtn.dataset.drugDose;
+      const route = drugBtn.dataset.drugRoute;
+      const notes = drugBtn.dataset.drugNotes;
+      if (name && dose) {
+        addPrescription({ name, dose, route, notes });
+        drugBtn.classList.add("added");
+        drugBtn.textContent = "✓ W planie";
+      }
+      return;
+    }
+    const openPharmAction = ev.target.closest("[data-action='open-pharm']");
+    if (openPharmAction) {
+      openPharmModal();
+      return;
+    }
+  });
+
   window.ClinicalVisit = {
     session: visitSession,
     recordStep,
@@ -2386,6 +3100,10 @@
     printPDFDossier,
     matchScoreToBranch,
     findNodeScore,
+    addPrescription,
+    openPharmModal,
+    closePharmModal,
+    findNodeContextualDrugs,
   };
 
   window.addEventListener("pagehide", () => {

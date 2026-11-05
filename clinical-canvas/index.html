@@ -15,6 +15,7 @@
     <script defer src="storage-adapter.js"></script>
     <script defer src="graph-model.js"></script>
     <script defer src="score-engine.js"></script>
+    <script defer src="pharmacology.js"></script>
     <script defer src="app.js"></script>
     <script defer src="calculators.js"></script>
   </head>
@@ -27,6 +28,7 @@
       <div class="top-actions">
         <button id="walkthrough-btn" class="primary">🚀 Tryb dyżurowy</button>
         <button id="calculators">Kalkulatory</button>
+        <button id="pharm-btn">💊 Leki & Płyny</button>
         <button id="soap-report">📋 Raport SOAP <span id="soap-badge" class="badge">0</span></button>
         <button id="dossier-btn">📄 PDF Dossier</button>
         <button id="theme" aria-label="Zmień motyw">Motyw</button>
@@ -186,6 +188,7 @@
           <h2 id="wt-step-title">Krok algorytmu</h2>
         </div>
         <div class="walkthrough-top-controls">
+          <button id="wt-pharm-btn">💊 Leki & Płyny</button>
           <button id="wt-pdf-btn">📄 PDF Dossier</button>
           <button id="wt-soap-btn">📋 Raport SOAP</button>
           <button id="wt-close" aria-label="Zakończ tryb dyżurowy">✕ Wyjdź</button>
@@ -233,6 +236,42 @@
         </aside>
       </div>
       <div id="calc-live" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+    </dialog>
+    <dialog id="pharm-dialog" aria-labelledby="pharm-title" aria-describedby="pharm-description">
+      <header class="pharm-header">
+        <div>
+          <div class="pharm-kicker">Farmakoterapia, Płynoterapia & Wytyczne NPOA v2.1</div>
+          <h2 id="pharm-title">Leksykon leków i kalkulatory dawek</h2>
+        </div>
+        <button id="pharm-close" aria-label="Zamknij leksykon leków">Zamknij</button>
+      </header>
+      <div class="pharm-patient-bar">
+        <label for="pharm-weight"><strong>Masa ciała pacjenta:</strong></label>
+        <div class="pharm-weight-input-group">
+          <input id="pharm-weight" type="number" min="2" max="250" step="0.5" value="70">
+          <span>kg</span>
+        </div>
+        <label for="pharm-age" style="margin-left: 14px;"><strong>Wiek (pediatria):</strong></label>
+        <div class="pharm-weight-input-group">
+          <input id="pharm-age" type="number" min="0" max="18" step="0.5" placeholder="lat">
+          <span>lat</span>
+        </div>
+        <button id="pharm-est-btn" type="button" class="pharm-est-btn">Oszacuj wagę z wieku (APLS)</button>
+        <span id="pharm-pop-badge" class="pharm-pop-badge">DOROSŁY (≥40 kg)</span>
+      </div>
+      <div class="pharm-tabs" role="tablist" aria-label="Wybierz dział farmakoterapii">
+        <button id="pharm-tab-rko" class="pharm-tab" role="tab" data-pharm-tab="rko" aria-selected="true">⚡ Stany nagłe & RKO</button>
+        <button id="pharm-tab-fluids" class="pharm-tab" role="tab" data-pharm-tab="fluids" aria-selected="false">💧 Płyny & Elektrolity/RKZ</button>
+        <button id="pharm-tab-pain" class="pharm-tab" role="tab" data-pharm-tab="pain" aria-selected="false">💊 Ból & Opioidy</button>
+        <button id="pharm-tab-npoa" class="pharm-tab" role="tab" data-pharm-tab="npoa" aria-selected="false">🛡️ Antybiotykoterapia NPOA</button>
+      </div>
+      <p id="pharm-description" class="pharm-description"></p>
+      <div id="pharm-panel" class="pharm-panel">
+        <!-- Rendered dynamically -->
+      </div>
+      <div class="pharm-footer">
+        <button id="pharm-add-plan-btn" class="primary">✓ Dołącz wybrane pozycje do zaleceń [P] PLAN</button>
+      </div>
     </dialog>
     <input
       id="import-file"
