@@ -1206,6 +1206,10 @@ test("ClinicalSafety: renal function formulas (CKD-EPI 2021 and Cockcroft-Gault)
   // Cockcroft-Gault: Female 45yo, 70kg, Scr 1.0 -> 92.36 * 0.85 = 78.5
   const crclF = Safety.calculateCockcroftGault({ creatinineMgDl: 1.0, age: 45, weightKg: 70, sex: "f" });
   assert.equal(crclF, 78.5);
+
+  // Safe against null/missing sex values (no TypeError)
+  assert.doesNotThrow(() => Safety.calculateEGFR({ creatinineMgDl: 1.0, age: 45, sex: null }));
+  assert.doesNotThrow(() => Safety.calculateCockcroftGault({ creatinineMgDl: 1.0, age: 45, weightKg: 70, sex: null }));
 });
 
 test("ClinicalSafety: QTc prolongation and TdP risk detection (Category X)", () => {
@@ -1264,6 +1268,17 @@ test("ClinicalSafety: renal contraindications and Triple Whammy (Category X & D)
 });
 
 test("ClinicalSafety: bleeding risks and peptic ulcer contraindications", () => {
+  // Dual antithrombotic therapy in ACS (Aspirin + Enoxaparin) MUST NOT trigger false Triple Bleeding alert
+  const resDualACS = Safety.evaluatePatientSafety({
+    patientProfile: { creatinine: 0.9, egfr: 90, comorbidities: [] },
+    orderedDrugs: [
+      { name: "Aspiryna", dose: "300 mg" },
+      { name: "Enoksaparyna", dose: "1 mg/kg" },
+    ],
+  });
+  assert.equal(resDualACS.criticalCount, 0, "Dual Aspirin + Enoxaparin must not trigger Triple Bleeding");
+  assert.ok(!resDualACS.alerts.some((a) => a.id === "DDI_TRIPLE_BLEEDING"));
+
   // Triple Bleeding: NSAID + Anticoagulant + Antiplatelet
   const resBleed = Safety.evaluatePatientSafety({
     patientProfile: { creatinine: 0.9, egfr: 90, comorbidities: [] },
@@ -1275,6 +1290,18 @@ test("ClinicalSafety: bleeding risks and peptic ulcer contraindications", () => 
   });
   assert.equal(resBleed.criticalCount, 1);
   assert.ok(resBleed.alerts.some((a) => a.id === "DDI_TRIPLE_BLEEDING"));
+
+  // Triple Bleeding: DAPT + Anticoagulant (Aspirin + Clopidogrel + Enoxaparin)
+  const resDAPT = Safety.evaluatePatientSafety({
+    patientProfile: { creatinine: 0.9, egfr: 90, comorbidities: [] },
+    orderedDrugs: [
+      { name: "Aspiryna", dose: "100 mg" },
+      { name: "Klopidogrel", dose: "75 mg" },
+      { name: "Enoksaparyna", dose: "1 mg/kg" },
+    ],
+  });
+  assert.equal(resDAPT.criticalCount, 1);
+  assert.ok(resDAPT.alerts.some((a) => a.id === "DDI_TRIPLE_BLEEDING"));
 
   // NSAID in peptic ulcer / active GI bleeding
   const resUlcer = Safety.evaluatePatientSafety({

@@ -2677,11 +2677,14 @@
     if (!weightInput || !popBadge) return;
     const w = Math.max(2, parseFloat(weightInput.value) || 70);
     currentPharmWeight = w;
+    patientSafetyProfile.weight = w;
     currentPharmIsChild = cohort === "p" || w < 40;
     if (currentPharmIsChild) {
+      if (currentPharmAge) patientSafetyProfile.age = currentPharmAge;
       popBadge.textContent = `PEDIATRIA (${w} kg < 40 kg)`;
       popBadge.classList.add("peds");
     } else {
+      patientSafetyProfile.age = 45;
       popBadge.textContent = `DOROSŁY (${w} kg ≥ 40 kg)`;
       popBadge.classList.remove("peds");
     }
@@ -3948,6 +3951,7 @@
   function openSafetyModal() {
     const dialog = $("safety-dialog");
     if (!dialog) return;
+    patientSafetyProfile.weight = currentPharmWeight || 70;
     renderSafetyModal();
     if (typeof dialog.showModal === "function") {
       dialog.showModal();
@@ -4052,6 +4056,10 @@
   function authorizeSafetyOverride(reason) {
     if (!reason || !reason.trim()) return false;
     const { report } = evaluateCurrentSafety();
+    if (!report.alerts || report.alerts.length === 0) {
+      toast("Brak aktywnych alertów do zatwierdzenia odstępstwa.");
+      return false;
+    }
     visitSession.safetyOverrides.push({
       timestamp: Date.now(),
       reason: reason.trim(),
@@ -4118,6 +4126,11 @@
   const safetyOverrideBtn = $("safety-override-btn");
   if (safetyOverrideBtn) {
     safetyOverrideBtn.onclick = () => {
+      const { report } = evaluateCurrentSafety();
+      if (!report.alerts || report.alerts.length === 0) {
+        toast("Brak aktywnych alertów CDS do autoryzacji odstępstwa.");
+        return;
+      }
       const reasonEl = $("safety-override-reason");
       const reason = reasonEl ? reasonEl.value.trim() : "";
       if (!reason) {

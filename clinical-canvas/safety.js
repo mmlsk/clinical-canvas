@@ -10,7 +10,7 @@
   function calculateEGFR({ creatinineMgDl = 1.0, age = 45, sex = "m" }) {
     const scr = Math.max(0.1, parseFloat(creatinineMgDl) || 1.0);
     const a = Math.max(18, parseFloat(age) || 45);
-    const isFemale = sex.toLowerCase() === "f" || sex.toLowerCase() === "k";
+    const isFemale = typeof sex === "string" && /^[fk]/i.test(sex);
 
     const kappa = isFemale ? 0.7 : 0.9;
     const alpha = isFemale ? -0.241 : -0.302;
@@ -61,7 +61,7 @@
     const scr = Math.max(0.1, parseFloat(creatinineMgDl) || 1.0);
     const a = Math.max(18, parseFloat(age) || 45);
     const w = Math.max(20, parseFloat(weightKg) || 70);
-    const isFemale = sex.toLowerCase() === "f" || sex.toLowerCase() === "k";
+    const isFemale = typeof sex === "string" && /^[fk]/i.test(sex);
 
     // CrCl = ((140 - Age) * Weight) / (72 * Scr) * (0.85 if female)
     let crcl = ((140 - a) * w) / (72 * scr);
@@ -177,17 +177,25 @@
 
     // --- Rule 3: Bleeding Risk & Anticoagulant + DAPT + NSAID ---
     const hasAnticoagulant = hasDrug(/heparyn|enoksaparyn|fondaparynuks|rywaroksaban|apiksaban|dabigatran/);
-    const hasAntiplatelet = hasDrug(/klopidogrel|tikagrelor|prasugrel|aspiryn/);
+    const hasAspirin = hasDrug(/aspiryn|kwas acetylosalicylow/);
+    const hasNonAspirinAntiplatelet = hasDrug(/klopidogrel|tikagrelor|prasugrel/);
+    const hasNsaidNonAspirin = hasDrug(/ketoprofen|ibuprofen|diklofenak|nlp/);
     const hasUlcerRisk = hasComorbidity("peptic_ulcer") || hasComorbidity("active_bleed");
 
-    if (hasNsaid && hasAnticoagulant && hasAntiplatelet) {
+    // True Triple Therapy: Anticoagulant + DAPT (Aspirin + P2Y12) OR Anticoagulant + Antiplatelet + Systemic NSAID
+    const isTripleBleeding =
+      hasAnticoagulant &&
+      ((hasNsaidNonAspirin && (hasAspirin || hasNonAspirinAntiplatelet)) ||
+        (hasAspirin && hasNonAspirinAntiplatelet));
+
+    if (isTripleBleeding) {
       alerts.push({
         id: "DDI_TRIPLE_BLEEDING",
         category: "X",
         title: "Krytyczne ryzyko masywnego krwawienia z przewodu pokarmowego / śródczaszkowego",
-        mechanism: "Równoczesna pełna antykoagulacja + lek przeciwpłytkowy + uszkodzenie błony śluzowej i hamowanie COX-1 przez NLPZ.",
-        action: "Bezwzględnie odstaw NLPZ. Zastosuj osłonę inhibitorem pompy protonowej (Pantoprazol 40 mg i.v.). Do uśmierzenia bólu użyj Paracetamolu lub opioidów.",
-        drugsInvolved: ["NLPZ", "Antykoagulant", "Lek przeciwpłytkowy"],
+        mechanism: "Równoczesna pełna antykoagulacja + podwójna terapia przeciwpłytkowa (DAPT) lub NLPZ hamujący COX-1.",
+        action: "Bezwzględnie wycofaj doraźny NLPZ lub zredukuj DAPT do pojedynczego leku. Włącz osłonę IPP (Pantoprazol 40 mg i.v.).",
+        drugsInvolved: ["Antykoagulant", hasNsaidNonAspirin ? "NLPZ" : "DAPT"],
       });
     } else if (hasNsaid && hasUlcerRisk) {
       alerts.push({
