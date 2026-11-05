@@ -26,6 +26,7 @@
       </div>
       <div class="top-actions">
         <button id="calculators" class="primary">Kalkulatory</button>
+        <button id="soap-report">📋 Raport SOAP <span id="soap-badge" class="badge">0</span></button>
         <button id="theme" aria-label="Zmień motyw">Motyw</button>
         <button id="sources">Źródła</button>
         <button id="export">Eksport</button>
@@ -150,6 +151,30 @@
     <dialog id="dialog" aria-labelledby="dialog-title">
       <div id="dialog-content"></div>
       <form method="dialog"><button>Zamknij</button></form>
+    </dialog>
+    <dialog id="soap-dialog" aria-labelledby="soap-title">
+      <header class="soap-header">
+        <div>
+          <div class="soap-kicker">Dokumentacja kliniczna · SOAP / EMR</div>
+          <h2 id="soap-title">Raport ścieżki pacjenta</h2>
+        </div>
+        <button id="soap-close" aria-label="Zamknij raport">Zamknij</button>
+      </header>
+      <p class="soap-description">
+        Zestawienie wywiadu, badań, kalkulatorów i zaleceń na podstawie odwiedzonych kafelków oraz zaznaczonych kryteriów. Możesz edytować treść przed skopiowaniem.
+      </p>
+      <div class="soap-body">
+        <textarea id="soap-textarea" spellcheck="false" rows="18"></textarea>
+      </div>
+      <div class="soap-actions">
+        <div class="soap-actions-left">
+          <button id="soap-copy" class="primary">📋 Kopiuj do schowka</button>
+          <button id="soap-download">💾 Pobierz (.txt)</button>
+        </div>
+        <div class="soap-actions-right">
+          <button id="soap-reset" class="danger-btn">🗑️ Nowy pacjent / Wyczyść</button>
+        </div>
+      </div>
     </dialog>
     <dialog id="calc-dialog" aria-labelledby="calc-title" aria-describedby="calc-description">
       <header class="calc-header">

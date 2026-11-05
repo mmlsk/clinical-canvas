@@ -489,3 +489,207 @@ test("decision criteria & branch logic: variable extraction and auto-pan centeri
   assert.equal(panX, 90);
   assert.equal(panY, 25);
 });
+
+test("visit session & SOAP report: generates complete medical summary and audit trail", () => {
+  function createSOAPGenerator() {
+    const list = (x) => Array.isArray(x) ? x : typeof x === "string" && x.trim() ? [x] : [];
+    return function generateSOAPReport(session, activeModule, cohort, nodesMap) {
+      const cohortLabel = cohort === "a" ? "DOROŚLI (≥16 lat)" : cohort === "p" ? "DZIECI (<16 lat)" : "OGÓLNA";
+      const visitedNodes = session.history.map((h) => nodesMap[h.nodeId]).filter(Boolean);
+
+      const hxList = new Set();
+      const examList = new Set();
+      const testsList = new Set();
+      const redList = new Set();
+      const dispoList = new Set();
+      const logicList = new Set();
+
+      visitedNodes.forEach((n) => {
+        const d = n.data || {};
+        list(d.hx).forEach((x) => hxList.add(x));
+        list(d.exam).forEach((x) => examList.add(x));
+        list(d.tests).forEach((x) => testsList.add(x));
+        list(d.red).forEach((x) => redList.add(x));
+        list(d.dispo).forEach((x) => dispoList.add(x));
+        if (d.logic) logicList.add(d.logic);
+      });
+
+      const checkedCriteria = [];
+      session.history.forEach((h) => {
+        if (h.criteria && h.criteria.length) {
+          h.criteria.forEach((c) => checkedCriteria.push(`[${h.title}] ${c}`));
+        }
+      });
+
+      const lines = [];
+      lines.push("================================================================================");
+      lines.push("DOKUMENTACJA WIZYTY / KONSULTACJI KLINICZNEJ (SOAP)");
+      lines.push(`Algorytm wiodący: ${activeModule} · Populacja: ${cohortLabel}`);
+      lines.push("================================================================================");
+      lines.push("");
+
+      lines.push("[S] WYWIAD I CECHY PODMIOTOWE (SUBJECTIVE)");
+      if (hxList.size > 0) {
+        lines.push("• Główne cechy podmiotowe i ukierunkowany wywiad:");
+        hxList.forEach((item) => lines.push(`  - ${item}`));
+      }
+      if (checkedCriteria.length > 0) {
+        lines.push("• Zaznaczone zmienne decyzyjne z wywiadu / oceny wstępnej:");
+        checkedCriteria.forEach((crit) => lines.push(`  - ${crit}`));
+      }
+      lines.push("");
+
+      lines.push("[O] BADANIE PRZEDMIOTOWE I DIAGNOSTYKA (OBJECTIVE)");
+      if (examList.size > 0) {
+        lines.push("• Ukierunkowane badanie fizykalne:");
+        examList.forEach((item) => lines.push(`  - ${item}`));
+      }
+      if (testsList.size > 0) {
+        lines.push("• Diagnostyka i badania pracowniane:");
+        testsList.forEach((item) => lines.push(`  - ${item}`));
+      }
+      if (session.calculators && session.calculators.length > 0) {
+        lines.push("• Zastosowane skale i kalkulatory ryzyka:");
+        session.calculators.forEach((c) => {
+          lines.push(`  * ${c.name}: ${c.total != null ? c.total : "NT"}${c.max ? " / " + c.max : ""} pkt — ${c.headline}`);
+          if (c.parts && c.parts.length) {
+            lines.push(`    [Składowe: ${c.parts.map((p) => `${p.label}: ${p.value}`).join(", ")}]`);
+          }
+          if (c.action) lines.push(`    [Decyzja kliniczna: ${c.action}]`);
+        });
+      }
+      lines.push("");
+
+      lines.push("[A] OCENA KLINICZNA I STRATYFIKACJA RYZYKA (ASSESSMENT)");
+      if (redList.size > 0) {
+        lines.push("• Czerwone flagi / punkty krytyczne podlegające weryfikacji:");
+        redList.forEach((item) => lines.push(`  - ${item}`));
+      }
+      const hasUrgent = visitedNodes.some((n) => n.type === "urgent");
+      lines.push(hasUrgent ? "• Status: Zidentyfikowano wskazania do pilnej eskalacji." : "• Status: Pacjent bez cech niestabilności.");
+      lines.push("");
+
+      lines.push("[P] POSTĘPOWANIE, ZALECENIA I DYSPOZYCJA (PLAN)");
+      if (dispoList.size > 0) {
+        lines.push("• Zalecenia dyspozycyjne i dalsza opieka:");
+        dispoList.forEach((item) => lines.push(`  - ${item}`));
+      }
+      lines.push("");
+
+      lines.push("--------------------------------------------------------------------------------");
+      lines.push("ŚCIEŻKA DECYZYJNA I AUDYT PRZEJŚĆ ALGORYTMU:");
+      session.history.forEach((step, idx) => {
+        lines.push(`${idx + 1}. [${step.type}] ${step.title}`);
+        if (step.criteria && step.criteria.length > 0) {
+          lines.push(`   └─ Zaznaczone zmienne: ${step.criteria.join(", ")}`);
+        }
+        if (step.branchTaken) {
+          lines.push(`   └─ Wybrana gałąź przejścia: "${step.branchTaken}" ➔`);
+        }
+      });
+      lines.push("================================================================================");
+
+      return lines.join("\n");
+    };
+  }
+
+  const generateReport = createSOAPGenerator();
+
+  const mockNodes = {
+    "chest.a.start": {
+      id: "chest.a.start",
+      title: "Ból w klatce piersiowej — triage",
+      type: "assessment",
+      data: {
+        hx: ["Ból zamostkowy o charakterze gniotącym", "Początek 45 minut temu"],
+        exam: ["SpO2 96% na powietrzu", "HR 88/min regularne", "BP 135/85 mmHg"],
+      },
+    },
+    "chest.a.red": {
+      id: "chest.a.red",
+      title: "Weryfikacja czerwonych flag ACS / PE / Aorta",
+      type: "decision",
+      data: {
+        red: ["Brak wstrząsu kardiogennego", "Brak asymetrii tętna"],
+        tests: ["12-odprowadzeniowe EKG w ciągu 10 min", "Troponina hs-cTn"],
+      },
+    },
+    "chest.a.exit": {
+      id: "chest.a.exit",
+      title: "Dyspozycja i dalsza obserwacja",
+      type: "outcome",
+      data: {
+        dispo: ["Powtórzenie troponiny za 1-2h w protokole 0/1h lub 0/2h", "Kwalifikacja do OIOK/Kardiologii w razie dynamiki"],
+      },
+    },
+  };
+
+  const session = {
+    history: [
+      {
+        nodeId: "chest.a.start",
+        title: "Ból w klatce piersiowej — triage",
+        type: "assessment",
+        branchTaken: "Brak wstrząsu",
+        criteria: ["Ból zamostkowy > 20 min"],
+      },
+      {
+        nodeId: "chest.a.red",
+        title: "Weryfikacja czerwonych flag ACS / PE / Aorta",
+        type: "decision",
+        branchTaken: "EKG bez uniesienia ST",
+        criteria: ["Ujemne czerwone flagi aorty"],
+      },
+      {
+        nodeId: "chest.a.exit",
+        title: "Dyspozycja i dalsza obserwacja",
+        type: "outcome",
+        branchTaken: null,
+        criteria: [],
+      },
+    ],
+    calculators: [
+      {
+        key: "curb65",
+        name: "CURB-65",
+        total: 0,
+        max: "5",
+        headline: "Niskie ryzyko zgonu (Grupa 1, śmiertelność <1%)",
+        action: "Rozważ leczenie ambulatoryjne",
+        parts: [{ label: "Wiek ≥65", value: "Nie" }],
+      },
+    ],
+  };
+
+  const report = generateReport(session, "Ból w klatce piersiowej", "a", mockNodes);
+
+  // Assert all key sections exist
+  assert.ok(report.includes("[S] WYWIAD I CECHY PODMIOTOWE (SUBJECTIVE)"));
+  assert.ok(report.includes("[O] BADANIE PRZEDMIOTOWE I DIAGNOSTYKA (OBJECTIVE)"));
+  assert.ok(report.includes("[A] OCENA KLINICZNA I STRATYFIKACJA RYZYKA (ASSESSMENT)"));
+  assert.ok(report.includes("[P] POSTĘPOWANIE, ZALECENIA I DYSPOZYCJA (PLAN)"));
+  assert.ok(report.includes("ŚCIEŻKA DECYZYJNA I AUDYT PRZEJŚĆ ALGORYTMU:"));
+
+  // Assert contents extracted from clinical nodes
+  assert.ok(report.includes("Ból zamostkowy o charakterze gniotącym"));
+  assert.ok(report.includes("SpO2 96% na powietrzu"));
+  assert.ok(report.includes("12-odprowadzeniowe EKG w ciągu 10 min"));
+  assert.ok(report.includes("Powtórzenie troponiny za 1-2h"));
+
+  // Assert checked variables are present with node context
+  assert.ok(report.includes("[Ból w klatce piersiowej — triage] Ból zamostkowy > 20 min"));
+  assert.ok(report.includes("[Weryfikacja czerwonych flag ACS / PE / Aorta] Ujemne czerwone flagi aorty"));
+
+  // Assert calculator results are incorporated
+  assert.ok(report.includes("CURB-65: 0 / 5 pkt"));
+  assert.ok(report.includes("Niskie ryzyko zgonu"));
+  assert.ok(report.includes("Rozważ leczenie ambulatoryjne"));
+
+  // Assert audit trail reflects sequence and branch transitions
+  assert.ok(report.includes('1. [assessment] Ból w klatce piersiowej — triage'));
+  assert.ok(report.includes('└─ Wybrana gałąź przejścia: "Brak wstrząsu" ➔'));
+  assert.ok(report.includes('2. [decision] Weryfikacja czerwonych flag ACS / PE / Aorta'));
+  assert.ok(report.includes('└─ Wybrana gałąź przejścia: "EKG bez uniesienia ST" ➔'));
+  assert.ok(report.includes('3. [outcome] Dyspozycja i dalsza obserwacja'));
+});
+

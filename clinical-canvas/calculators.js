@@ -243,6 +243,22 @@
     $("calc-insert").disabled = !result.ok;
     $("calc-insert").textContent = result.ok ? `Wstaw wynik · ${targetCohort() === "p" ? "ścieżka dzieci" : "ścieżka dorosłych"}` : "Wstaw wynik do płótna";
     $("calc-references").innerHTML = sources[active].map(([name,url])=>`<a href="${url}" target="_blank" rel="noopener noreferrer">${escape(name)} ↗</a>`).join("");
+    if (result.ok) {
+      window.dispatchEvent(
+        new CustomEvent("clinical:score-evaluated", {
+          detail: {
+            key: active,
+            name: labels[active],
+            total: result.total,
+            max: $("calc-max").textContent.replace("/ ", ""),
+            headline: result.headline,
+            action: result.action,
+            parts: result.parts,
+            timestamp: Date.now(),
+          },
+        }),
+      );
+    }
   }
   function targetCohort() {
     return active === "pews" || (active === "gcs" && drafts.gcs.population === "childOver5") ? "p" : "a";

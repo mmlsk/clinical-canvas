@@ -26,6 +26,10 @@
     transform = { x: 20, y: 20, k: 1 },
     activeBranch = null,
     checkedVars = new Set();
+  const visitSession = {
+    history: [],
+    calculators: [],
+  };
   let undo = [],
     redo = [],
     pendingSave,
@@ -528,9 +532,46 @@
     transform.y = Math.round((r.height - 40) / 2 - targetCenterY * transform.k);
     applyTransform();
   }
-  function selectNode(id, pan = false) {
+  function updateSOAPBadge() {
+    const badge = $("soap-badge");
+    if (badge) {
+      const count = visitSession.history.length;
+      badge.textContent = count;
+      badge.hidden = count === 0;
+    }
+  }
+  function recordStep(id, branchEdge = null) {
+    const info = nodeInfo(id);
+    if (!info) return;
+    const existing = visitSession.history.find((h) => h.nodeId === id);
+    let branchLabel = null;
+    if (branchEdge) {
+      const g = Object.values(store.graphs).find((graph) =>
+        graph.edges.some((e) => e.id === branchEdge),
+      );
+      const edge = g?.edges.find((e) => e.id === branchEdge);
+      branchLabel = edge?.label || "Dalej";
+    }
+    if (existing) {
+      existing.timestamp = Date.now();
+      if (branchLabel) existing.branchTaken = branchLabel;
+    } else {
+      visitSession.history.push({
+        nodeId: id,
+        graphKey: info.key,
+        title: info.n.title,
+        type: info.n.type,
+        timestamp: Date.now(),
+        branchTaken: branchLabel,
+        criteria: [],
+      });
+    }
+    updateSOAPBadge();
+  }
+  function selectNode(id, pan = false, branchEdge = null) {
     selected = { kind: "node", id };
     editing = false;
+    recordStep(id, branchEdge);
     if (pan) panToNode(id);
     draw();
     renderPanel();
@@ -540,11 +581,10 @@
     editing = false;
     selected = null;
     activeBranch = null;
-    checkedVars.clear();
     renderNav();
     renderHeading();
     const g = visibleGraphs()[0];
-    if (g?.nodes[0]) selected = { kind: "node", id: g.nodes[0].id };
+    if (g?.nodes[0]) selectNode(g.nodes[0].id);
     draw();
     renderPanel();
     fit();
@@ -921,12 +961,24 @@
     if (check) {
       const varKey = check.dataset.var;
       const edgeId = check.dataset.edge;
+      const labelText = check.nextElementSibling?.textContent?.trim() || "";
       if (check.checked) {
         checkedVars.add(varKey);
         activeBranch = edgeId;
       } else {
         checkedVars.delete(varKey);
       }
+      if (selected?.id) {
+        const step = visitSession.history.find((h) => h.nodeId === selected.id);
+        if (step) {
+          if (check.checked && !step.criteria.includes(labelText)) {
+            step.criteria.push(labelText);
+          } else if (!check.checked) {
+            step.criteria = step.criteria.filter((c) => c !== labelText);
+          }
+        }
+      }
+      updateSOAPBadge();
       draw();
       renderPanel();
     }
@@ -937,7 +989,7 @@
       const targetId = jumpBtn.dataset.jumpNode;
       const branchEdge = jumpBtn.dataset.branchEdge;
       if (branchEdge) activeBranch = branchEdge;
-      selectNode(targetId, true);
+      selectNode(targetId, true, branchEdge);
       return;
     }
     const branchCard = ev.target.closest(".branch-card");
@@ -1117,7 +1169,7 @@
       const targetId = chip.getAttribute("data-jump-node");
       const branchEdge = chip.getAttribute("data-branch-edge");
       if (branchEdge) activeBranch = branchEdge;
-      selectNode(targetId, true);
+      selectNode(targetId, true, branchEdge);
       ev.preventDefault();
       return;
     }
@@ -1597,6 +1649,232 @@
         persist();
       },
     );
+  function generateSOAPReport() {
+    const g = currentGraph() || visibleGraphs()[0];
+    const m = D.modules.find((mod) => mod.id === active) || {
+      name: g?.title || "Konsultacja",
+    };
+    const cohortLabel =
+      cohort === "a"
+        ? "DOROŚLI (≥16 lat)"
+        : cohort === "p"
+          ? "DZIECI (<16 lat)"
+          : "OGÓLNA (dorośli i dzieci)";
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    const visitedNodes = visitSession.history
+      .map((h) => nodeInfo(h.nodeId)?.n)
+      .filter(Boolean);
+
+    const hxList = new Set();
+    const examList = new Set();
+    const testsList = new Set();
+    const redList = new Set();
+    const dispoList = new Set();
+    const logicList = new Set();
+    const sourcesList = new Set();
+
+    visitedNodes.forEach((n) => {
+      const d = n.data || {};
+      list(d.hx).forEach((x) => hxList.add(x));
+      list(d.exam).forEach((x) => examList.add(x));
+      list(d.tests).forEach((x) => testsList.add(x));
+      list(d.red).forEach((x) => redList.add(x));
+      list(d.dispo).forEach((x) => dispoList.add(x));
+      if (d.logic) logicList.add(d.logic);
+      list(d.src).forEach((x) => sourcesList.add(x));
+    });
+
+    const checkedCriteria = [];
+    visitSession.history.forEach((h) => {
+      if (h.criteria && h.criteria.length) {
+        h.criteria.forEach((c) => checkedCriteria.push(`[${h.title}] ${c}`));
+      }
+    });
+
+    const lines = [];
+    lines.push("================================================================================");
+    lines.push("DOKUMENTACJA WIZYTY / KONSULTACJI KLINICZNEJ (SOAP)");
+    lines.push(`Data oceny: ${dateStr}`);
+    lines.push(`Algorytm wiodący: ${m.name} · Populacja: ${cohortLabel}`);
+    lines.push("================================================================================");
+    lines.push("");
+
+    // S - Subjective
+    lines.push("[S] WYWIAD I CECHY PODMIOTOWE (SUBJECTIVE)");
+    if (hxList.size > 0) {
+      lines.push("• Główne cechy podmiotowe i ukierunkowany wywiad:");
+      hxList.forEach((item) => lines.push(`  - ${item}`));
+    } else {
+      lines.push("• Zebrano ukierunkowany wywiad podmiotowy według standardu algorytmu.");
+    }
+    if (checkedCriteria.length > 0) {
+      lines.push("• Zaznaczone zmienne decyzyjne z wywiadu / oceny wstępnej:");
+      checkedCriteria.forEach((crit) => lines.push(`  - ${crit}`));
+    }
+    lines.push("");
+
+    // O - Objective
+    lines.push("[O] BADANIE PRZEDMIOTOWE I DIAGNOSTYKA (OBJECTIVE)");
+    if (examList.size > 0) {
+      lines.push("• Ukierunkowane badanie fizykalne:");
+      examList.forEach((item) => lines.push(`  - ${item}`));
+    }
+    if (testsList.size > 0) {
+      lines.push("• Diagnostyka i badania pracowniane:");
+      testsList.forEach((item) => lines.push(`  - ${item}`));
+    }
+    if (visitSession.calculators.length > 0) {
+      lines.push("• Zastosowane skale i kalkulatory ryzyka:");
+      visitSession.calculators.forEach((c) => {
+        lines.push(`  * ${c.name}: ${c.total != null ? c.total : "NT"}${c.max ? " / " + c.max : ""} pkt — ${c.headline}`);
+        if (c.parts && c.parts.length) {
+          const partsSummary = c.parts.map((p) => `${p.label}: ${p.value} (${p.score}p)`).join(", ");
+          lines.push(`    [Składowe: ${partsSummary}]`);
+        }
+        if (c.action) lines.push(`    [Decyzja kliniczna: ${c.action}]`);
+      });
+    } else {
+      lines.push("• Skale kliniczne: Nie rejestrowano odrębnego wyniku w kalkulatorze.");
+    }
+    lines.push("");
+
+    // A - Assessment
+    lines.push("[A] OCENA KLINICZNA I STRATYFIKACJA RYZYKA (ASSESSMENT)");
+    if (redList.size > 0) {
+      lines.push("• Czerwone flagi / punkty krytyczne podlegające weryfikacji:");
+      redList.forEach((item) => lines.push(`  - ${item}`));
+    }
+    const hasUrgent = visitedNodes.some((n) => n.type === "urgent");
+    if (hasUrgent) {
+      lines.push("• Status: Zidentyfikowano wskazania do pilnej eskalacji / procedury natychmiastowej.");
+    } else {
+      lines.push("• Status: Pacjent bez cech niestabilności hemodynamicznej / oddechowej w chwili badania.");
+    }
+    if (logicList.size > 0) {
+      lines.push("• Uzasadnienie postępowania:");
+      logicList.forEach((log) => lines.push(`  - ${log}`));
+    }
+    lines.push("");
+
+    // P - Plan
+    lines.push("[P] POSTĘPOWANIE, ZALECENIA I DYSPOZYCJA (PLAN)");
+    if (dispoList.size > 0) {
+      lines.push("• Zalecenia dyspozycyjne i dalsza opieka:");
+      dispoList.forEach((item) => lines.push(`  - ${item}`));
+    } else {
+      lines.push("• Zastosowano postępowanie doraźne i dalsze zgodnie z algorytmem.");
+    }
+    if (sourcesList.size > 0) {
+      lines.push("• Podstawa wytycznych:");
+      Array.from(sourcesList).slice(0, 3).forEach((src) => lines.push(`  - ${src}`));
+    }
+    lines.push("");
+
+    // Audit trail
+    lines.push("--------------------------------------------------------------------------------");
+    lines.push("ŚCIEŻKA DECYZYJNA I AUDYT PRZEJŚĆ ALGORYTMU:");
+    if (visitSession.history.length === 0) {
+      lines.push("(Brak zarejestrowanych kroków w bieżącej sesji)");
+    } else {
+      visitSession.history.forEach((step, idx) => {
+        const typeLabel = TYPES[step.type] ? TYPES[step.type].split(" / ")[0] : "Krok";
+        lines.push(`${idx + 1}. [${typeLabel}] ${step.title}`);
+        if (step.criteria && step.criteria.length > 0) {
+          lines.push(`   └─ Zaznaczone zmienne: ${step.criteria.join(", ")}`);
+        }
+        if (step.branchTaken) {
+          lines.push(`   └─ Wybrana gałąź przejścia: "${step.branchTaken}" ➔`);
+        }
+      });
+    }
+    lines.push("================================================================================");
+
+    return lines.join("\n");
+  }
+
+  function openSOAPDialog() {
+    const dialog = $("soap-dialog");
+    const textarea = $("soap-textarea");
+    if (!dialog || !textarea) return;
+    textarea.value = generateSOAPReport();
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function resetSession() {
+    visitSession.history = [];
+    visitSession.calculators = [];
+    checkedVars.clear();
+    activeBranch = null;
+    updateSOAPBadge();
+    const g = visibleGraphs()[0];
+    if (g?.nodes[0]) selectNode(g.nodes[0].id);
+    draw();
+    renderPanel();
+    const textarea = $("soap-textarea");
+    if (textarea) textarea.value = generateSOAPReport();
+    toast("Zresetowano ścieżkę pacjenta.");
+  }
+
+  window.addEventListener("clinical:score-evaluated", (ev) => {
+    const detail = ev.detail;
+    if (!detail) return;
+    const existingIdx = visitSession.calculators.findIndex(
+      (c) => c.key === detail.key,
+    );
+    if (existingIdx >= 0) {
+      visitSession.calculators[existingIdx] = detail;
+    } else {
+      visitSession.calculators.push(detail);
+    }
+    updateSOAPBadge();
+  });
+
+  const soapReportBtn = $("soap-report");
+  if (soapReportBtn) soapReportBtn.onclick = openSOAPDialog;
+  const soapCloseBtn = $("soap-close");
+  if (soapCloseBtn) soapCloseBtn.onclick = () => $("soap-dialog").close();
+  const soapCopyBtn = $("soap-copy");
+  if (soapCopyBtn)
+    soapCopyBtn.onclick = () => {
+      const text = $("soap-textarea").value;
+      if (navigator?.clipboard?.writeText) {
+        navigator.clipboard
+          .writeText(text)
+          .then(() => toast("Skopiowano raport SOAP do schowka."))
+          .catch(() => {
+            $("soap-textarea").select();
+            document.execCommand("copy");
+            toast("Skopiowano raport SOAP do schowka.");
+          });
+      } else {
+        $("soap-textarea").select();
+        document.execCommand("copy");
+        toast("Skopiowano raport SOAP do schowka.");
+      }
+    };
+  const soapDownloadBtn = $("soap-download");
+  if (soapDownloadBtn)
+    soapDownloadBtn.onclick = () => {
+      const text = $("soap-textarea").value;
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      downloadBlob(blob, `raport-soap-${dateStr}.txt`);
+      toast("Pobrano plik raportu SOAP.");
+    };
+  const soapResetBtn = $("soap-reset");
+  if (soapResetBtn) soapResetBtn.onclick = resetSession;
+
+  window.ClinicalVisit = {
+    session: visitSession,
+    recordStep,
+    generateSOAPReport,
+    resetSession,
+    updateSOAPBadge,
+  };
+
   window.addEventListener("pagehide", () => {
     if (pendingSave) persist();
   });
