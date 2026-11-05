@@ -31,6 +31,16 @@
     calculators: [],
     pharmacy: [],
     diagnostics: [],
+    safetyOverrides: [],
+  };
+  const patientSafetyProfile = {
+    creatinine: 1.0,
+    egfr: 90,
+    age: 45,
+    sex: "m",
+    weight: 70,
+    allergies: [],
+    comorbidities: [],
   };
   let currentPharmTab = "rko",
     currentPharmWeight = 70,
@@ -1933,6 +1943,20 @@
       lines.push("• Uzasadnienie postępowania:");
       logicList.forEach((log) => lines.push(`  - ${log}`));
     }
+    const { egfrRes, report: safetyReport } = evaluateCurrentSafety();
+    if (patientSafetyProfile.creatinine !== 1.0 || (patientSafetyProfile.allergies && patientSafetyProfile.allergies.length > 0) || (patientSafetyProfile.comorbidities && patientSafetyProfile.comorbidities.length > 0)) {
+      lines.push(`• Profil ryzyka i funkcja nerek (CKD-EPI 2021): Kreatynina ${patientSafetyProfile.creatinine} mg/dL, eGFR ${egfrRes.egfr} ml/min/1.73m² (${egfrRes.stage})`);
+      if (patientSafetyProfile.allergies.length > 0) lines.push(`  - Wywiad alergiczny: ${patientSafetyProfile.allergies.join(", ")}`);
+      if (patientSafetyProfile.comorbidities.length > 0) lines.push(`  - Obciążenia kliniczne: ${patientSafetyProfile.comorbidities.join(", ")}`);
+    }
+    if (safetyReport.alerts && safetyReport.alerts.length > 0) {
+      lines.push("• Bezpieczeństwo farmakoterapii (CDS Alerts & DDI):");
+      safetyReport.alerts.forEach((alt) => {
+        lines.push(`  - [Kat. ${alt.category}] ⛔ ${alt.title}`);
+        lines.push(`    └─ Mechanizm: ${alt.mechanism}`);
+        lines.push(`    └─ Rekomendacja: ${alt.action}`);
+      });
+    }
     lines.push("");
 
     // P - Plan
@@ -1941,6 +1965,14 @@
       lines.push("• Zaordynowana farmakoterapia, płyny i antybiotykoterapia:");
       visitSession.pharmacy.forEach((item) => {
         lines.push(`  * ${item.name}: ${item.dose} (${item.route || "i.v."})${item.notes ? ` — ${item.notes}` : ""}`);
+      });
+    }
+    if (visitSession.safetyOverrides && visitSession.safetyOverrides.length > 0) {
+      lines.push("• Autoryzowane odstępstwa kliniczne i audyt decyzji (Clinical Overrides):");
+      visitSession.safetyOverrides.forEach((ov, idx) => {
+        const timeStr = new Date(ov.timestamp).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
+        lines.push(`  ${idx + 1}. [Godz. ${timeStr}] Lekarz dyżurny autoryzował odstępstwo od alertu CDS:`);
+        lines.push(`     └─ Uzasadnienie: "${ov.reason}"`);
       });
     }
     if (dispoList.size > 0) {
@@ -1990,9 +2022,15 @@
     visitSession.calculators = [];
     visitSession.pharmacy = [];
     visitSession.diagnostics = [];
+    visitSession.safetyOverrides = [];
+    patientSafetyProfile.creatinine = 1.0;
+    patientSafetyProfile.egfr = 90;
+    patientSafetyProfile.allergies = [];
+    patientSafetyProfile.comorbidities = [];
     checkedVars.clear();
     activeBranch = null;
     updateSOAPBadge();
+    updateSafetyBadge();
     const g = visibleGraphs()[0];
     if (g?.nodes[0]) selectNode(g.nodes[0].id);
     draw();
@@ -2235,6 +2273,7 @@
   function printPDFDossier() {
     const container = $("dossier-print-container");
     if (!container) return;
+    const { egfrRes, report: safetyReport } = evaluateCurrentSafety();
     const g = currentGraph() || visibleGraphs()[0];
     const m = D.modules.find((mod) => mod.id === active) || {
       name: g?.title || "Konsultacja",
@@ -2347,6 +2386,50 @@
               `).join("")}
             </tbody>
           </table>
+        </section>
+      ` : ""}
+
+      ${(safetyReport.alerts.length > 0 || (visitSession.safetyOverrides && visitSession.safetyOverrides.length > 0) || patientSafetyProfile.creatinine !== 1.0) ? `
+        <section class="dossier-section">
+          <h2>Bezpieczeństwo Farmakoterapii, Interakcje (CDS) i Odstępstwa Kliniczne</h2>
+          <p style="font-size: 9pt; margin-bottom: 6pt;">
+            <strong>Ocena nerkowa (CKD-EPI 2021):</strong> Kreatynina: ${patientSafetyProfile.creatinine} mg/dL | eGFR: <b>${egfrRes.egfr} ml/min/1.73m²</b> (${escape(egfrRes.stage)})
+            ${patientSafetyProfile.allergies.length > 0 ? `<br><strong>Alergie:</strong> ${escape(patientSafetyProfile.allergies.join(", "))}` : ""}
+            ${patientSafetyProfile.comorbidities.length > 0 ? `<br><strong>Obciążenia:</strong> ${escape(patientSafetyProfile.comorbidities.join(", "))}` : ""}
+          </p>
+          ${safetyReport.alerts.length > 0 ? `
+            <table class="dossier-table">
+              <thead>
+                <tr>
+                  <th>Kategoria</th>
+                  <th>Alert / Interakcja</th>
+                  <th>Mechanizm ryzyka</th>
+                  <th>Zalecane postępowanie</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${safetyReport.alerts.map((alt) => `
+                  <tr style="background: ${alt.category === 'X' ? '#fff5f5' : '#fffdf0'}">
+                    <td><strong style="color: ${alt.category === 'X' ? '#b00' : '#b7791f'}">Kat. ${escape(alt.category)}</strong></td>
+                    <td><b>${escape(alt.title)}</b><br><small>Leki: ${escape((alt.drugsInvolved || []).join(", "))}</small></td>
+                    <td style="font-size: 8.5pt;">${escape(alt.mechanism)}</td>
+                    <td style="font-size: 8.5pt;">${escape(alt.action)}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          ` : "<p style='font-size:9pt; color:#2e7d32;'>Brak krytycznych interakcji i przeciwwskazań farmakologicznych.</p>"}
+
+          ${visitSession.safetyOverrides && visitSession.safetyOverrides.length > 0 ? `
+            <div style="margin-top: 8pt; padding: 6pt 8pt; background: #fff8e1; border: 1pt solid #ffe082; border-radius: 4pt; font-size: 8.5pt;">
+              <strong>Zarejestrowane autoryzacje odstępstw klinicznych (Clinical Overrides):</strong>
+              <ul style="margin: 4pt 0 0 16pt; padding: 0;">
+                ${visitSession.safetyOverrides.map((ov) => `
+                  <li>[${new Date(ov.timestamp).toLocaleTimeString("pl-PL")}] Uzasadnienie lekarza: <em>${escape(ov.reason)}</em></li>
+                `).join("")}
+              </ul>
+            </div>
+          ` : ""}
         </section>
       ` : ""}
 
@@ -2508,6 +2591,7 @@
         timestamp: Date.now(),
       });
       updateSOAPBadge();
+      updateSafetyBadge();
       toast(`Dodano do planu: ${item.name} (${item.dose})`);
     } else {
       toast(`Pozycja "${item.name}" znajduje się już w planie leczenia.`);
@@ -3804,8 +3888,260 @@
     };
   }
 
+  // --- Clinical Decision Support (CDS) Safety Engine & Drug-Drug Interactions (DDI) ---
+  function getSafetyEngine() {
+    return (
+      (typeof window !== "undefined" && window.ClinicalSafety) ||
+      (typeof globalThis !== "undefined" && globalThis.ClinicalSafety)
+    );
+  }
+
+  function evaluateCurrentSafety() {
+    const S = getSafetyEngine();
+    if (!S) {
+      return {
+        egfrRes: { egfr: 90, stage: "G1", severity: "normal" },
+        report: { alerts: [], criticalCount: 0, warningCount: 0, isSafe: true, summary: "CDS nieaktywny" },
+      };
+    }
+    const egfrRes = S.calculateEGFR({
+      creatinineMgDl: patientSafetyProfile.creatinine,
+      age: patientSafetyProfile.age,
+      sex: patientSafetyProfile.sex,
+    });
+    patientSafetyProfile.egfr = egfrRes.egfr;
+    const report = S.evaluatePatientSafety({
+      patientProfile: patientSafetyProfile,
+      orderedDrugs: visitSession.pharmacy || [],
+    });
+    return { egfrRes, report };
+  }
+
+  function updateSafetyBadge() {
+    const { report } = evaluateCurrentSafety();
+    const badge = $("safety-badge");
+    const btn = $("safety-btn");
+    const wtBtn = $("wt-safety-btn");
+    const hasOverrides = (visitSession.safetyOverrides || []).length > 0;
+
+    const stateClass = report.criticalCount > 0 ? "critical" : report.warningCount > 0 ? "warning" : "safe";
+
+    if (badge) {
+      if (report.criticalCount > 0) {
+        badge.textContent = report.criticalCount;
+      } else if (report.warningCount > 0) {
+        badge.textContent = report.warningCount;
+      } else {
+        badge.textContent = "✓";
+      }
+    }
+
+    [btn, wtBtn].forEach((b) => {
+      if (b) {
+        b.classList.remove("safe", "warning", "critical");
+        b.classList.add(stateClass);
+        b.title = report.summary + (hasOverrides ? " (Zarejestrowano odstępstwo kliniczne)" : "");
+      }
+    });
+  }
+
+  function openSafetyModal() {
+    const dialog = $("safety-dialog");
+    if (!dialog) return;
+    renderSafetyModal();
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute("open", "");
+    }
+  }
+
+  function closeSafetyModal() {
+    const dialog = $("safety-dialog");
+    if (dialog?.open) dialog.close();
+  }
+
+  function renderSafetyModal() {
+    const S = getSafetyEngine();
+    const { egfrRes, report } = evaluateCurrentSafety();
+
+    const scrInput = $("safety-creatinine");
+    if (scrInput) scrInput.value = patientSafetyProfile.creatinine;
+
+    const chkPen = $("allergy-penicillin");
+    if (chkPen) chkPen.checked = patientSafetyProfile.allergies.includes("penicillin_anaphylaxis");
+    const chkAsp = $("allergy-aspirin");
+    if (chkAsp) chkAsp.checked = patientSafetyProfile.allergies.includes("aspirin_asthma");
+
+    const chkUlc = $("risk-ulcer");
+    if (chkUlc) chkUlc.checked = patientSafetyProfile.comorbidities.includes("peptic_ulcer");
+    const chkQt = $("risk-qt");
+    if (chkQt) chkQt.checked = patientSafetyProfile.comorbidities.includes("prolonged_qt");
+    const chkPreg = $("risk-pregnancy");
+    if (chkPreg) chkPreg.checked = patientSafetyProfile.comorbidities.includes("pregnancy");
+
+    const egfrEl = $("safety-egfr-display");
+    if (egfrEl && S) {
+      const crcl = S.calculateCockcroftGault({
+        creatinineMgDl: patientSafetyProfile.creatinine,
+        age: patientSafetyProfile.age,
+        weightKg: patientSafetyProfile.weight,
+        sex: patientSafetyProfile.sex,
+      });
+      egfrEl.className = `safety-egfr-badge ${egfrRes.severity}`;
+      egfrEl.innerHTML = `eGFR: <strong>${egfrRes.egfr} ml/min/1.73m²</strong> (${escape(egfrRes.stage.split(" ")[0])})<br><small style="font-weight:normal; opacity:0.9;">CKD-EPI 2021 · CrCl: ~${crcl} ml/min</small>`;
+    }
+
+    const summaryBox = $("safety-summary-box");
+    if (summaryBox) {
+      summaryBox.className = `safety-summary-box ${report.criticalCount > 0 ? "critical" : report.warningCount > 0 ? "warning" : "safe"}`;
+      summaryBox.innerHTML = `
+        <strong>${report.criticalCount > 0 ? "⛔ KRYTYCZNE ZAGROŻENIE BEZPIECZEŃSTWA (Kat. X)" : report.warningCount > 0 ? "⚠️ OSTRZEŻENIE O INTERAKCJI (Kat. D)" : "🛡️ PLAN BEZPIECZNY (Zgodny z wytycznymi)"}</strong>
+        <div>${escape(report.summary)}</div>
+        ${visitSession.safetyOverrides && visitSession.safetyOverrides.length > 0 ? `<div style="margin-top:6px; font-weight:600; color:#2e7d32;">✓ Zarejestrowano ${visitSession.safetyOverrides.length} autoryzowane odstępstwo(-a) kliniczne.</div>` : ""}
+      `;
+    }
+
+    const ordersEl = $("safety-orders-list");
+    if (ordersEl) {
+      if (!visitSession.pharmacy || visitSession.pharmacy.length === 0) {
+        ordersEl.innerHTML = `<span style="color:#777; font-size:12px;">Brak zaordynowanych leków w bieżącym planie leczenia. Dodaj leki z kafelków lub leksykonu (Leki & Płyny).</span>`;
+      } else {
+        ordersEl.innerHTML = visitSession.pharmacy
+          .map(
+            (p) => `<span class="safety-order-pill">💊 ${escape(p.name)}: <b>${escape(p.dose)}</b> (${escape(p.route || "i.v.")})</span>`
+          )
+          .join("");
+      }
+    }
+
+    const alertsEl = $("safety-alerts-container");
+    if (alertsEl) {
+      if (report.alerts.length === 0) {
+        alertsEl.innerHTML = `
+          <div class="safety-summary-box safe" style="margin:0;">
+            <strong>🛡️ Brak przeciwwskazań i istotnych interakcji:</strong>
+            Wszystkie zaordynowane leki są zgodne z wybranym profilem nerkowym, alergicznym i klinicznym pacjenta.
+          </div>
+        `;
+      } else {
+        alertsEl.innerHTML = report.alerts
+          .map(
+            (a) => `
+          <div class="safety-alert-card ${a.category === "X" ? "cat-x" : "cat-d"}">
+            <div class="safety-alert-header">
+              <span class="safety-cat-badge ${a.category === "X" ? "cat-x" : "cat-d"}">
+                ${a.category === "X" ? "KATEGORIA X — BEZWZGLĘDNIE PRZECIWWSKAZANE" : "KATEGORIA D — POWAŻNA INTERAKCJA"}
+              </span>
+              <strong style="font-size: 13.5px;">${escape(a.title)}</strong>
+            </div>
+            <div class="safety-alert-mechanism">
+              <strong>Mechanizm i ryzyko:</strong> ${escape(a.mechanism)}
+            </div>
+            <div class="safety-alert-action">
+              <strong>Zalecane postępowanie:</strong> ${escape(a.action)}
+            </div>
+          </div>
+        `
+          )
+          .join("");
+      }
+    }
+  }
+
+  function authorizeSafetyOverride(reason) {
+    if (!reason || !reason.trim()) return false;
+    const { report } = evaluateCurrentSafety();
+    visitSession.safetyOverrides.push({
+      timestamp: Date.now(),
+      reason: reason.trim(),
+      alertsSnapshot: report.alerts.map((a) => ({ id: a.id, title: a.title, category: a.category })),
+    });
+    updateSafetyBadge();
+    toast("Zarejestrowano odstępstwo kliniczne (Clinical Override).");
+    return true;
+  }
+
+  const safetyBtn = $("safety-btn");
+  if (safetyBtn) safetyBtn.onclick = () => openSafetyModal();
+  const wtSafetyBtn = $("wt-safety-btn");
+  if (wtSafetyBtn) wtSafetyBtn.onclick = () => openSafetyModal();
+  const safetyCloseBtn = $("safety-close");
+  if (safetyCloseBtn) safetyCloseBtn.onclick = () => closeSafetyModal();
+
+  const safetyScrInput = $("safety-creatinine");
+  if (safetyScrInput) {
+    const handleScr = (ev) => {
+      const val = parseFloat(ev.target.value);
+      if (!isNaN(val) && val > 0) {
+        patientSafetyProfile.creatinine = val;
+        renderSafetyModal();
+        updateSafetyBadge();
+      }
+    };
+    safetyScrInput.addEventListener("input", handleScr);
+    safetyScrInput.addEventListener("change", handleScr);
+  }
+
+  function toggleAllergy(key, isChecked) {
+    if (isChecked) {
+      if (!patientSafetyProfile.allergies.includes(key)) patientSafetyProfile.allergies.push(key);
+    } else {
+      patientSafetyProfile.allergies = patientSafetyProfile.allergies.filter((k) => k !== key);
+    }
+    renderSafetyModal();
+    updateSafetyBadge();
+  }
+
+  function toggleComorbidity(key, isChecked) {
+    if (isChecked) {
+      if (!patientSafetyProfile.comorbidities.includes(key)) patientSafetyProfile.comorbidities.push(key);
+    } else {
+      patientSafetyProfile.comorbidities = patientSafetyProfile.comorbidities.filter((k) => k !== key);
+    }
+    renderSafetyModal();
+    updateSafetyBadge();
+  }
+
+  const chkPen = $("allergy-penicillin");
+  if (chkPen) chkPen.addEventListener("change", (e) => toggleAllergy("penicillin_anaphylaxis", e.target.checked));
+  const chkAsp = $("allergy-aspirin");
+  if (chkAsp) chkAsp.addEventListener("change", (e) => toggleAllergy("aspirin_asthma", e.target.checked));
+
+  const chkUlc = $("risk-ulcer");
+  if (chkUlc) chkUlc.addEventListener("change", (e) => toggleComorbidity("peptic_ulcer", e.target.checked));
+  const chkQt = $("risk-qt");
+  if (chkQt) chkQt.addEventListener("change", (e) => toggleComorbidity("prolonged_qt", e.target.checked));
+  const chkPreg = $("risk-pregnancy");
+  if (chkPreg) chkPreg.addEventListener("change", (e) => toggleComorbidity("pregnancy", e.target.checked));
+
+  const safetyOverrideBtn = $("safety-override-btn");
+  if (safetyOverrideBtn) {
+    safetyOverrideBtn.onclick = () => {
+      const reasonEl = $("safety-override-reason");
+      const reason = reasonEl ? reasonEl.value.trim() : "";
+      if (!reason) {
+        toast("Wpisz uzasadnienie kliniczne przed zatwierdzeniem odstępstwa!");
+        if (reasonEl) reasonEl.focus();
+        return;
+      }
+      authorizeSafetyOverride(reason);
+      if (reasonEl) reasonEl.value = "";
+      renderSafetyModal();
+    };
+  }
+
+  const safetySoapBtn = $("safety-view-soap-btn");
+  if (safetySoapBtn) {
+    safetySoapBtn.onclick = () => {
+      closeSafetyModal();
+      openSOAPDialog();
+    };
+  }
+
   window.ClinicalVisit = {
     session: visitSession,
+    patientSafetyProfile,
     recordStep,
     generateSOAPReport,
     resetSession,
@@ -3823,6 +4159,11 @@
     openDiagnosticsModal,
     closeDiagnosticsModal,
     findNodeContextualDiagnostics,
+    evaluateCurrentSafety,
+    updateSafetyBadge,
+    openSafetyModal,
+    closeSafetyModal,
+    authorizeSafetyOverride,
   };
 
   window.addEventListener("pagehide", () => {
@@ -3832,5 +4173,6 @@
   load().then(() => {
     renderNav();
     chooseModule(active);
+    updateSafetyBadge();
   });
 })();

@@ -1892,6 +1892,235 @@ dialog .source-line {
   }
 }
 
+/* Clinical Safety & Drug-Drug Interactions (CDS) */
+#safety-dialog {
+  max-width: 1080px;
+  width: calc(100% - 32px);
+  max-height: 92dvh;
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  overflow-y: auto;
+}
+.safety-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.safety-header h2 {
+  font-size: 24px;
+  margin: 4px 0 0;
+}
+.safety-kicker {
+  font-size: 11px;
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: #dc2626;
+  font-weight: 650;
+}
+.safety-body-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.safety-profile-pane {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px;
+}
+.safety-profile-pane h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--ink);
+}
+.safety-field {
+  margin-bottom: 10px;
+}
+.safety-field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.safety-field input {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 13px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper);
+}
+.safety-egfr-badge {
+  padding: 8px 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 12.5px;
+  margin-bottom: 12px;
+}
+.safety-check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+.safety-main-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.safety-summary-box {
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  border: 1px solid var(--line);
+}
+.safety-summary-box.safe {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+  color: #14532d;
+}
+.safety-summary-box.warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+.safety-summary-box.critical {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
+}
+.safety-orders-box {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+}
+.safety-orders-box h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.safety-orders-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.safety-order-pill {
+  font-size: 11.5px;
+  padding: 3px 8px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.safety-alerts-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.safety-alert-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px 14px;
+  background: var(--paper);
+}
+.safety-alert-card.cat-x {
+  border-color: #fca5a5;
+  border-left: 5px solid #dc2626;
+  background: #fff5f5;
+}
+.safety-alert-card.cat-d {
+  border-color: #fcd34d;
+  border-left: 5px solid #d97706;
+  background: #fffbeb;
+}
+.safety-alert-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.safety-cat-badge {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.safety-cat-badge.cat-x {
+  background: #dc2626;
+  color: #fff;
+}
+.safety-cat-badge.cat-d {
+  background: #d97706;
+  color: #fff;
+}
+.safety-alert-mechanism {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.safety-alert-action {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.safety-override-section {
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 14px;
+}
+.safety-override-section h4 {
+  margin: 0 0 4px;
+  font-size: 13.5px;
+}
+.safety-override-help {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 8px;
+  line-height: 1.45;
+}
+#safety-override-reason {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12.5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.safety-badge-btn {
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.safety-badge-btn.safe {
+  border-color: #10b981;
+}
+.safety-badge-btn.warning {
+  border-color: #f59e0b;
+  color: #b45309;
+}
+.safety-badge-btn.critical {
+  border-color: #ef4444;
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+@media (max-width: 820px) {
+  .safety-body-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Print Dossier Styling */
 .print-only {
   display: none;

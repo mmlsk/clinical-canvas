@@ -11,10 +11,12 @@ vm.runInNewContext(fs.readFileSync("clinical-canvas/clinical-data.js", "utf8"), 
 vm.runInNewContext(fs.readFileSync("clinical-canvas/graph-model.js", "utf8"), ctx);
 vm.runInNewContext(fs.readFileSync("clinical-canvas/pharmacology.js", "utf8"), ctx);
 vm.runInNewContext(fs.readFileSync("clinical-canvas/diagnostics.js", "utf8"), ctx);
+vm.runInNewContext(fs.readFileSync("clinical-canvas/safety.js", "utf8"), ctx);
 const M = ctx.ClinicalModel;
 const D = ctx.ClinicalData;
 const P = ctx.ClinicalPharmacology;
 const Diag = ctx.ClinicalDiagnostics;
+const Safety = ctx.ClinicalSafety;
 
 test("defaults(): generates all 24 baseline graphs and 168 nodes", () => {
   const defs = M.defaults();
@@ -1177,6 +1179,212 @@ test("visit session & SOAP report: integrates diagnostics into [O] Objective and
   assert.ok(soapText.includes("⚠️ Protokół eFAST: DODATNI eFAST! Wolny płyn: Zachyłek Morisona"));
   assert.ok(soapText.includes("⚠️ hs-cTnT: Rule-in NSTEMI (65 ng/L)"));
 });
+
+test("ClinicalSafety: renal function formulas (CKD-EPI 2021 and Cockcroft-Gault)", () => {
+  assert.ok(Safety, "ClinicalSafety module is loaded");
+
+  // CKD-EPI 2021: Male 45yo, Scr 1.0 mg/dL -> Normal (G1, ~95 ml/min/1.73m2)
+  const egfrM = Safety.calculateEGFR({ creatinineMgDl: 1.0, age: 45, sex: "m" });
+  assert.equal(egfrM.egfr, 95);
+  assert.equal(egfrM.severity, "normal");
+  assert.ok(egfrM.stage.includes("G1"));
+
+  // CKD-EPI 2021: Female 65yo, Scr 1.8 mg/dL -> G3b (~29-30 ml/min/1.73m2)
+  const egfrF = Safety.calculateEGFR({ creatinineMgDl: 1.8, age: 65, sex: "f" });
+  assert.ok(egfrF.egfr < 35 && egfrF.egfr >= 25);
+  assert.ok(egfrF.severity === "critical" || egfrF.severity === "warning");
+
+  // CKD-EPI 2021: Male 72yo, Scr 3.5 mg/dL -> G5 (<15 ml/min/1.73m2)
+  const egfrSevere = Safety.calculateEGFR({ creatinineMgDl: 3.5, age: 72, sex: "m" });
+  assert.ok(egfrSevere.egfr < 20);
+  assert.equal(egfrSevere.severity, "critical");
+
+  // Cockcroft-Gault: Male 45yo, 70kg, Scr 1.0 -> ((140-45)*70)/(72*1) = 92.4
+  const crclM = Safety.calculateCockcroftGault({ creatinineMgDl: 1.0, age: 45, weightKg: 70, sex: "m" });
+  assert.equal(crclM, 92.4);
+
+  // Cockcroft-Gault: Female 45yo, 70kg, Scr 1.0 -> 92.36 * 0.85 = 78.5
+  const crclF = Safety.calculateCockcroftGault({ creatinineMgDl: 1.0, age: 45, weightKg: 70, sex: "f" });
+  assert.equal(crclF, 78.5);
+});
+
+test("ClinicalSafety: QTc prolongation and TdP risk detection (Category X)", () => {
+  // Concomitant Amiodarone + Clarithromycin
+  const res1 = Safety.evaluatePatientSafety({
+    patientProfile: { creatinine: 1.0, age: 50, sex: "m", allergies: [], comorbidities: [] },
+    orderedDrugs: [{ name: "Amiodaron", dose: "300 mg" }, { name: "Klarytromycyna", dose: "500 mg" }],
+  });
+  assert.equal(res1.isSafe, false);
+  assert.equal(res1.criticalCount, 1);
+  const qtcAlert = res1.alerts.find((a) => a.id === "DDI_QT_PROLONGATION");
+  assert.ok(qtcAlert, "Must detect QT prolongation alert");
+  assert.equal(qtcAlert.category, "X");
+
+  // Haloperidol in patient with baseline prolonged QTc
+  const res2 = Safety.evaluatePatientSafety({
+    patientProfile: { creatinine: 1.0, age: 60, sex: "f", allergies: [], comorbidities: ["prolonged_qt"] },
+    orderedDrugs: [{ name: "Haloperidol", dose: "5 mg" }],
+  });
+  assert.equal(res2.criticalCount, 1);
+  assert.ok(res2.alerts.some((a) => a.id === "DDI_QT_PROLONGATION"));
+});
+
+test("ClinicalSafety: renal contraindications and Triple Whammy (Category X & D)", () => {
+  // NSAID in severe CKD (eGFR < 30) -> Category X
+  const resCKD = Safety.evaluatePatientSafety({
+    patientProfile: { creatinine: 2.8, egfr: 22, age: 70, sex: "m", comorbidities: [] },
+    orderedDrugs: [{ name: "Ketoprofen", dose: "100 mg" }],
+  });
+  assert.equal(resCKD.criticalCount, 1);
+  const ckdAlert = resCKD.alerts.find((a) => a.id === "CONTRA_NSAID_CKD");
+  assert.ok(ckdAlert);
+  assert.equal(ckdAlert.category, "X");
+
+  // Triple Whammy: NSAID + ACEI + Diuretic -> Category D
+  const resTW = Safety.evaluatePatientSafety({
+    patientProfile: { creatinine: 1.1, egfr: 65, age: 68, sex: "m", comorbidities: [] },
+    orderedDrugs: [
+      { name: "Ketoprofen", dose: "100 mg" },
+      { name: "Ramipryl", dose: "5 mg" },
+      { name: "Furosemid", dose: "40 mg" },
+    ],
+  });
+  assert.equal(resTW.criticalCount, 0);
+  assert.equal(resTW.warningCount, 1);
+  const twAlert = resTW.alerts.find((a) => a.id === "DDI_TRIPLE_WHAMMY");
+  assert.ok(twAlert);
+  assert.equal(twAlert.category, "D");
+
+  // Aminoglycoside in renal impairment (eGFR 35) -> Category D
+  const resGent = Safety.evaluatePatientSafety({
+    patientProfile: { creatinine: 1.8, egfr: 35, age: 65, sex: "m" },
+    orderedDrugs: [{ name: "Gentamycyna", dose: "5 mg/kg" }],
+  });
+  assert.ok(resGent.alerts.some((a) => a.id === "CONTRA_AMINOGLYCOSIDE_CKD"));
+});
+
+test("ClinicalSafety: bleeding risks and peptic ulcer contraindications", () => {
+  // Triple Bleeding: NSAID + Anticoagulant + Antiplatelet
+  const resBleed = Safety.evaluatePatientSafety({
+    patientProfile: { creatinine: 0.9, egfr: 90, comorbidities: [] },
+    orderedDrugs: [
+      { name: "Ketoprofen", dose: "100 mg" },
+      { name: "Enoksaparyna", dose: "1 mg/kg" },
+      { name: "Klopidogrel", dose: "75 mg" },
+    ],
+  });
+  assert.equal(resBleed.criticalCount, 1);
+  assert.ok(resBleed.alerts.some((a) => a.id === "DDI_TRIPLE_BLEEDING"));
+
+  // NSAID in peptic ulcer / active GI bleeding
+  const resUlcer = Safety.evaluatePatientSafety({
+    patientProfile: { creatinine: 1.0, egfr: 85, comorbidities: ["peptic_ulcer"] },
+    orderedDrugs: [{ name: "Ibuprofen", dose: "400 mg" }],
+  });
+  assert.equal(resUlcer.criticalCount, 1);
+  assert.ok(resUlcer.alerts.some((a) => a.id === "CONTRA_NSAID_ULCER"));
+});
+
+test("ClinicalSafety: allergy cross-reactivity and Samter triad", () => {
+  // Penicillin anaphylaxis + Amoxicillin -> Category X
+  const resPen = Safety.evaluatePatientSafety({
+    patientProfile: { allergies: ["penicillin_anaphylaxis"] },
+    orderedDrugs: [{ name: "Amoksycylina z kwasem klawulanowym", dose: "1.2 g" }],
+  });
+  assert.equal(resPen.criticalCount, 1);
+  assert.ok(resPen.alerts.some((a) => a.id === "ALLERGY_PENICILLIN_ANAPHYLAXIS"));
+
+  // Penicillin anaphylaxis + Ceftriaxone -> Category D cross-reactivity warning
+  const resCeph = Safety.evaluatePatientSafety({
+    patientProfile: { allergies: ["penicillin_anaphylaxis"] },
+    orderedDrugs: [{ name: "Ceftriakson", dose: "2 g" }],
+  });
+  assert.equal(resCeph.criticalCount, 0);
+  assert.equal(resCeph.warningCount, 1);
+  assert.ok(resCeph.alerts.some((a) => a.id === "ALLERGY_CROSS_CEPHALOSPORIN"));
+
+  // Samter Triad + Ketoprofen -> Category X
+  const resSamter = Safety.evaluatePatientSafety({
+    patientProfile: { allergies: ["aspirin_asthma"] },
+    orderedDrugs: [{ name: "Ketoprofen", dose: "100 mg" }],
+  });
+  assert.equal(resSamter.criticalCount, 1);
+  assert.ok(resSamter.alerts.some((a) => a.id === "ALLERGY_SAMTER_TRIAD"));
+});
+
+test("ClinicalSafety: hemodynamic collapse, CNS depression and pregnancy", () => {
+  // Nitrate + PDE-5 -> Category X
+  const resNitrate = Safety.evaluatePatientSafety({
+    patientProfile: {},
+    orderedDrugs: [{ name: "Nitrogliceryna", dose: "0.4 mg s.l." }, { name: "Sildenafil", dose: "50 mg" }],
+  });
+  assert.equal(resNitrate.criticalCount, 1);
+  assert.ok(resNitrate.alerts.some((a) => a.id === "DDI_NITRATE_PDE5"));
+
+  // Opioid + Benzodiazepine -> Category D
+  const resCNS = Safety.evaluatePatientSafety({
+    patientProfile: {},
+    orderedDrugs: [{ name: "Morfina", dose: "5 mg" }, { name: "Midazolam", dose: "2.5 mg" }],
+  });
+  assert.equal(resCNS.warningCount, 1);
+  assert.ok(resCNS.alerts.some((a) => a.id === "DDI_RESPIRATORY_DEPRESSION"));
+
+  // Pregnancy teratogenicity: Doxycycline & Ciprofloxacin -> Category X
+  const resPreg = Safety.evaluatePatientSafety({
+    patientProfile: { comorbidities: ["pregnancy"] },
+    orderedDrugs: [{ name: "Doksycyklina", dose: "100 mg" }],
+  });
+  assert.equal(resPreg.criticalCount, 1);
+  assert.ok(resPreg.alerts.some((a) => a.id === "CONTRA_PREGNANCY"));
+});
+
+test("visit session & SOAP report: integrates CDS alerts, renal status, and Clinical Overrides", () => {
+  function formatSOAPWithSafety({ patientProfile, alerts, overrides }) {
+    const lines = [];
+    lines.push("[A] OCENA KLINICZNA I STRATYFIKACJA RYZYKA (ASSESSMENT)");
+    if (patientProfile.creatinine !== 1.0 || (patientProfile.allergies && patientProfile.allergies.length > 0) || (patientProfile.comorbidities && patientProfile.comorbidities.length > 0)) {
+      lines.push(`• Profil ryzyka i funkcja nerek (CKD-EPI 2021): Kreatynina ${patientProfile.creatinine} mg/dL, eGFR ${patientProfile.egfr} ml/min/1.73m² (${patientProfile.stage || "G1"})`);
+      if (patientProfile.allergies.length > 0) lines.push(`  - Wywiad alergiczny: ${patientProfile.allergies.join(", ")}`);
+      if (patientProfile.comorbidities.length > 0) lines.push(`  - Obciążenia kliniczne: ${patientProfile.comorbidities.join(", ")}`);
+    }
+    if (alerts && alerts.length > 0) {
+      lines.push("• Bezpieczeństwo farmakoterapii (CDS Alerts & DDI):");
+      alerts.forEach((alt) => {
+        lines.push(`  - [Kat. ${alt.category}] ⛔ ${alt.title}`);
+        lines.push(`    └─ Mechanizm: ${alt.mechanism}`);
+        lines.push(`    └─ Rekomendacja: ${alt.action}`);
+      });
+    }
+    lines.push("");
+    lines.push("[P] POSTĘPOWANIE, ZALECENIA I DYSPOZYCJA (PLAN)");
+    if (overrides && overrides.length > 0) {
+      lines.push("• Autoryzowane odstępstwa kliniczne i audyt decyzji (Clinical Overrides):");
+      overrides.forEach((ov, idx) => {
+        lines.push(`  ${idx + 1}. [Godz. 14:30] Lekarz dyżurny autoryzował odstępstwo od alertu CDS:`);
+        lines.push(`     └─ Uzasadnienie: "${ov.reason}"`);
+      });
+    }
+    return lines.join("\n");
+  }
+
+  const sampleProfile = { creatinine: 2.2, egfr: 28, stage: "G4", allergies: ["penicillin_anaphylaxis"], comorbidities: ["peptic_ulcer"] };
+  const sampleAlerts = [
+    { category: "X", title: "Bezwzględne przeciwwskazanie: NLPZ w ciężkiej niewydolności nerek", mechanism: "Skurcz tętniczki doprowadzającej", action: "Wycofaj NLPZ" },
+  ];
+  const sampleOverrides = [
+    { timestamp: Date.now(), reason: "Stan wyższej konieczności: pilna analgezja przed repozycją złamania; wdrożono intensywne nawodnienie." },
+  ];
+
+  const soap = formatSOAPWithSafety({ patientProfile: sampleProfile, alerts: sampleAlerts, overrides: sampleOverrides });
+  assert.ok(soap.includes("Profil ryzyka i funkcja nerek (CKD-EPI 2021): Kreatynina 2.2 mg/dL, eGFR 28 ml/min/1.73m² (G4)"));
+  assert.ok(soap.includes("Wywiad alergiczny: penicillin_anaphylaxis"));
+  assert.ok(soap.includes("Obciążenia kliniczne: peptic_ulcer"));
+  assert.ok(soap.includes("Bezpieczeństwo farmakoterapii (CDS Alerts & DDI):"));
+  assert.ok(soap.includes("[Kat. X] ⛔ Bezwzględne przeciwwskazanie: NLPZ w ciężkiej niewydolności nerek"));
+  assert.ok(soap.includes("Autoryzowane odstępstwa kliniczne i audyt decyzji (Clinical Overrides):"));
+  assert.ok(soap.includes("Stan wyższej konieczności: pilna analgezja przed repozycją złamania"));
+});
+
 
 
 

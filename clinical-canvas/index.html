@@ -17,6 +17,7 @@
     <script defer src="score-engine.js"></script>
     <script defer src="pharmacology.js"></script>
     <script defer src="diagnostics.js"></script>
+    <script defer src="safety.js"></script>
     <script defer src="app.js"></script>
     <script defer src="calculators.js"></script>
   </head>
@@ -31,6 +32,7 @@
         <button id="calculators">Kalkulatory</button>
         <button id="pharm-btn">💊 Leki & Płyny</button>
         <button id="diagnostics-btn">🔬 POCUS & Lab</button>
+        <button id="safety-btn" class="safety-badge-btn" title="Audyt bezpieczeństwa lekowego i interakcji">🛡️ Bezpieczeństwo <span id="safety-badge" class="badge">0</span></button>
         <button id="soap-report">📋 Raport SOAP <span id="soap-badge" class="badge">0</span></button>
         <button id="dossier-btn">📄 PDF Dossier</button>
         <button id="theme" aria-label="Zmień motyw">Motyw</button>
@@ -190,6 +192,7 @@
           <h2 id="wt-step-title">Krok algorytmu</h2>
         </div>
         <div class="walkthrough-top-controls">
+          <button id="wt-safety-btn">🛡️ Bezpieczeństwo</button>
           <button id="wt-diagnostics-btn">🔬 POCUS & Lab</button>
           <button id="wt-pharm-btn">💊 Leki & Płyny</button>
           <button id="wt-pdf-btn">📄 PDF Dossier</button>
@@ -296,6 +299,75 @@
       </div>
       <div class="diagnostics-footer">
         <button id="diagnostics-add-soap-btn" class="primary">✓ Dołącz wyniki do badania przedmiotowego [O] i oceny [A]</button>
+      </div>
+    </dialog>
+    <dialog id="safety-dialog" aria-labelledby="safety-title" aria-describedby="safety-description">
+      <header class="safety-header">
+        <div>
+          <div class="safety-kicker">Wspomaganie Decyzji Klinicznych · Bezpieczeństwo Lekowe & CDS v2.1</div>
+          <h2 id="safety-title">Audyt Bezpieczeństwa i Interakcji Lekowych</h2>
+        </div>
+        <button id="safety-close" aria-label="Zamknij audyt bezpieczeństwa">Zamknij</button>
+      </header>
+      <div class="safety-body-layout">
+        <aside class="safety-profile-pane">
+          <h3>Profil ryzyka pacjenta</h3>
+          <div class="safety-field">
+            <label for="safety-creatinine">Kreatynina surowicy [mg/dL]:</label>
+            <input id="safety-creatinine" type="number" step="0.1" min="0.2" max="15.0" value="1.0">
+          </div>
+          <div class="safety-egfr-badge" id="safety-egfr-display">
+            eGFR: <strong>90 ml/min/1.73m²</strong> (G1)
+          </div>
+
+          <h4 style="margin: 12px 0 6px; font-size: 13px;">Wywiad alergiczny:</h4>
+          <label class="safety-check-label">
+            <input type="checkbox" id="allergy-penicillin" value="penicillin_anaphylaxis">
+            <span>Ciężka anafilaksja na penicyliny</span>
+          </label>
+          <label class="safety-check-label">
+            <input type="checkbox" id="allergy-aspirin" value="aspirin_asthma">
+            <span>Astma aspirynowa (Triada Samtera)</span>
+          </label>
+
+          <h4 style="margin: 12px 0 6px; font-size: 13px;">Obciążenia kliniczne:</h4>
+          <label class="safety-check-label">
+            <input type="checkbox" id="risk-ulcer" value="peptic_ulcer">
+            <span>Krwawienie z PP / choroba wrzodowa</span>
+          </label>
+          <label class="safety-check-label">
+            <input type="checkbox" id="risk-qt" value="prolonged_qt">
+            <span>Wyjściowo wydłużony odstęp QTc</span>
+          </label>
+          <label class="safety-check-label">
+            <input type="checkbox" id="risk-pregnancy" value="pregnancy">
+            <span>Ciąża (I–III trymestr)</span>
+          </label>
+        </aside>
+
+        <section class="safety-main-pane">
+          <div id="safety-summary-box" class="safety-summary-box">
+            <!-- Summary rendered dynamically -->
+          </div>
+          <div class="safety-orders-box">
+            <h4>Aktywne ordynacje w planie leczenia:</h4>
+            <div id="safety-orders-list" class="safety-orders-list"></div>
+          </div>
+          <div id="safety-alerts-container" class="safety-alerts-container">
+            <!-- Active alerts rendered dynamically -->
+          </div>
+          <div class="safety-override-section">
+            <h4>Autoryzacja kliniczna z uzasadnieniem (Clinical Override)</h4>
+            <p class="safety-override-help">
+              Jeśli podanie leku pomimo alertu jest uzasadnione stanem wyższej konieczności klinicznej (np. sepsa zagrażająca życiu), wpisz medyczne uzasadnienie decyzji. Zostanie ono zarchiwizowane w audycie SOAP i karcie PDF Dossier.
+            </p>
+            <textarea id="safety-override-reason" placeholder="Wpisz uzasadnienie decyzji klinicznej (np. 'Korzyść z opanowania wstrząsu przewyższa ryzyko; wdrożono ścisłe monitorowanie...')" rows="2"></textarea>
+            <div style="margin-top: 8px; display: flex; gap: 8px;">
+              <button type="button" id="safety-override-btn" class="primary">Zatwierdź odstępstwo (Override)</button>
+              <button type="button" id="safety-view-soap-btn">Przejdź do raportu SOAP ➔</button>
+            </div>
+          </div>
+        </section>
       </div>
     </dialog>
     <input

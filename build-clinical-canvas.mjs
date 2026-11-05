@@ -11,9 +11,9 @@ mode:"offline",
 async read(){const v=localStorage.getItem("clinical-canvas-v2")||localStorage.getItem("makieta-medyczna-v1");return v?JSON.parse(v):null;},
 async write(payload){localStorage.setItem("clinical-canvas-v2",JSON.stringify(payload));}
 };`;
-const scripts=fs.readFileSync(path.join(dir,"clinical-data.js"),"utf8")+"\n"+offline+"\n"+["graph-model.js","score-engine.js","pharmacology.js","diagnostics.js","app.js","calculators.js"].map(f=>fs.readFileSync(path.join(dir,f),"utf8")).join("\n");
+const scripts=fs.readFileSync(path.join(dir,"clinical-data.js"),"utf8")+"\n"+offline+"\n"+["graph-model.js","score-engine.js","pharmacology.js","diagnostics.js","safety.js","app.js","calculators.js"].map(f=>fs.readFileSync(path.join(dir,f),"utf8")).join("\n");
 html=html.replace(/<link\s+rel="stylesheet"\s+href="styles\.css"\s*\/?>/,"<style>"+css+"</style>")
-  .replace(/<script\s+defer\s+src="(?:clinical-data|storage-adapter|graph-model|score-engine|pharmacology|diagnostics|app|calculators)\.js"\s*><\/script>/g,"")
+  .replace(/<script\s+defer\s+src="(?:clinical-data|storage-adapter|graph-model|score-engine|pharmacology|diagnostics|safety|app|calculators)\.js"\s*><\/script>/g,"")
   .replace(/<script>window\.__API_BASE__\s*=\s*"__PORT_8765__";<\/script>/,"")
   .replace("</body>","<script>"+scripts.replace(/<\/script/gi,"<\\/script")+"</script></body>");
 fs.writeFileSync(path.join(root,"makieta-medyczna-canvas.html"),html);
