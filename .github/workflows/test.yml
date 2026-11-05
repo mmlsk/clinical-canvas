@@ -45,6 +45,7 @@ jobs:
         run: |
           node --check clinical-canvas/graph-model.js
           node --check clinical-canvas/pharmacology.js
+          node --check clinical-canvas/diagnostics.js
           node --check clinical-canvas/app.js
           node --check clinical-canvas/calculators.js
           node --check clinical-canvas/score-engine.js

@@ -10,9 +10,11 @@ ctx.globalThis = ctx;
 vm.runInNewContext(fs.readFileSync("clinical-canvas/clinical-data.js", "utf8"), ctx);
 vm.runInNewContext(fs.readFileSync("clinical-canvas/graph-model.js", "utf8"), ctx);
 vm.runInNewContext(fs.readFileSync("clinical-canvas/pharmacology.js", "utf8"), ctx);
+vm.runInNewContext(fs.readFileSync("clinical-canvas/diagnostics.js", "utf8"), ctx);
 const M = ctx.ClinicalModel;
 const D = ctx.ClinicalData;
 const P = ctx.ClinicalPharmacology;
+const Diag = ctx.ClinicalDiagnostics;
 
 test("defaults(): generates all 24 baseline graphs and 168 nodes", () => {
   const defs = M.defaults();
@@ -978,6 +980,204 @@ test("visit session & SOAP report: integrates planned drugs, fluids, and antibio
   assert.ok(planText.includes("Amoksycylina: 3x 1000 mg p.o. (p.o.) — NPOA CAP"));
   assert.ok(planText.includes("Hospitalizacja na OIT"));
 });
+
+test("diagnostics: evaluateEFAST() detects free fluid, pneumothorax, and pericardial tamponade", () => {
+  // Negative eFAST
+  const neg = Diag.evaluateEFAST();
+  assert.equal(neg.isPositive, false);
+  assert.equal(neg.hasTamponade, false);
+  assert.equal(neg.hasPneumothorax, false);
+  assert.equal(neg.fluidSites.length, 0);
+
+  // Free fluid in Morison's pouch
+  const posMorison = Diag.evaluateEFAST({ ruq: "fluid" });
+  assert.equal(posMorison.isPositive, true);
+  assert.equal(posMorison.fluidSites.length, 1);
+  assert.ok(posMorison.fluidSites[0].includes("Morisona"));
+  assert.ok(posMorison.action.includes("laparotomii"));
+
+  // Pericardial tamponade
+  const tamponade = Diag.evaluateEFAST({ pericardial: "tamponade" });
+  assert.equal(tamponade.isPositive, true);
+  assert.equal(tamponade.hasTamponade, true);
+  assert.ok(tamponade.action.includes("perikardiocenteza"));
+
+  // Pneumothorax
+  const ptx = Diag.evaluateEFAST({ pleuralRight: "pneumothorax" });
+  assert.equal(ptx.isPositive, true);
+  assert.equal(ptx.hasPneumothorax, true);
+  assert.ok(ptx.ptxSites[0].includes("Prawa opłucna"));
+  assert.ok(ptx.action.includes("drenaż opłucnej"));
+});
+
+test("diagnostics: evaluateBLUE() accurately matches Lichtenstein pulmonary profiles", () => {
+  // Profile B: Cardiogenic pulmonary edema
+  const profB = Diag.evaluateBLUE({ profileType: "B", lungSliding: true });
+  assert.equal(profB.profile, "B");
+  assert.ok(profB.primaryDiagnosis.includes("obrzęk płuc"));
+  assert.ok(profB.action.includes("furosemid"));
+
+  // Profile A': Pneumothorax (lung point)
+  const profAprime = Diag.evaluateBLUE({ profileType: "A", lungSliding: false, lungPoint: true });
+  assert.equal(profAprime.profile, "A_prime");
+  assert.ok(profAprime.primaryDiagnosis.includes("Odma opłucnowa"));
+  assert.equal(profAprime.alert, true);
+
+  // Profile A + DVT: Pulmonary embolism
+  const profPE = Diag.evaluateBLUE({ profileType: "A", lungSliding: true, dvtPresent: true });
+  assert.equal(profPE.profile, "A");
+  assert.ok(profPE.primaryDiagnosis.includes("Zatorowość płucna"));
+  assert.equal(profPE.alert, true);
+
+  // Profile C: Pneumonia
+  const profC = Diag.evaluateBLUE({ profileType: "C", lungSliding: true });
+  assert.equal(profC.profile, "C");
+  assert.ok(profC.primaryDiagnosis.includes("Zapalenie płuc"));
+});
+
+test("diagnostics: evaluateFOCUS() identifies tamponade, RV strain, volume status, and DVT", () => {
+  // Normal FOCUS
+  const normal = Diag.evaluateFOCUS({});
+  assert.equal(normal.hasTamponade, false);
+  assert.equal(normal.hasRVStrain, false);
+  assert.equal(normal.hasDVT, false);
+  assert.equal(normal.alert, false);
+
+  // Tamponade
+  const tamp = Diag.evaluateFOCUS({ pericardialEffusion: "tamponade" });
+  assert.equal(tamp.hasTamponade, true);
+  assert.equal(tamp.alert, true);
+  assert.ok(tamp.action.includes("perikardiocenteza"));
+
+  // RV strain (PE)
+  const rv = Diag.evaluateFOCUS({ rvEnlargement: true });
+  assert.equal(rv.hasRVStrain, true);
+  assert.equal(rv.alert, true);
+  assert.ok(rv.summary.includes("PRZECIĄŻENIA PRAWEJ KOMORY"));
+
+  // IVC collapsibility & volume status
+  const hypovolemic = Diag.evaluateFOCUS({ ivcDiameterMm: 12, ivcCollapsibility: 70 });
+  assert.ok(hypovolemic.volumeStatus.includes("Hipowolemia"));
+  const overloaded = Diag.evaluateFOCUS({ ivcDiameterMm: 24, ivcCollapsibility: 20 });
+  assert.ok(overloaded.volumeStatus.includes("Przeciążenie objętościowe"));
+
+  // DVT CUS positive
+  const dvt = Diag.evaluateFOCUS({ dvtFemoral: "non_compressible" });
+  assert.equal(dvt.hasDVT, true);
+  assert.ok(dvt.summary.includes("DODATNI WYNIK DVT CUS"));
+});
+
+test("diagnostics: evaluateHsTroponin() implements ESC 0/1h kinetics and rule-in/rule-out cutoffs", () => {
+  // hs-cTnT: very low baseline (<5) -> rule-out
+  const roBaseline = Diag.evaluateHsTroponin({ assay: "hs-cTnT", ctn0: 4 });
+  assert.equal(roBaseline.category, "rule_out");
+
+  // hs-cTnT: very high baseline (>=52) -> rule-in NSTEMI
+  const riBaseline = Diag.evaluateHsTroponin({ assay: "hs-cTnT", ctn0: 65 });
+  assert.equal(riBaseline.category, "rule_in");
+  assert.ok(riBaseline.recommendation.includes("KORONAROGRAFIA"));
+
+  // hs-cTnT: delta >= 5 ng/L in 1h -> rule-in
+  const riDelta = Diag.evaluateHsTroponin({ assay: "hs-cTnT", ctn0: 15, ctn1: 21, deltaHours: 1 });
+  assert.equal(riDelta.category, "rule_in");
+  assert.equal(riDelta.delta, 6.0);
+
+  // hs-cTnT: delta < 3 ng/L and baseline < 12 -> rule-out
+  const roDelta = Diag.evaluateHsTroponin({ assay: "hs-cTnT", ctn0: 8, ctn1: 9, deltaHours: 1 });
+  assert.equal(roDelta.category, "rule_out");
+
+  // Observe zone
+  const obs = Diag.evaluateHsTroponin({ assay: "hs-cTnT", ctn0: 20, ctn1: 23, deltaHours: 1 });
+  assert.equal(obs.category, "observe");
+});
+
+test("diagnostics: evaluateAgeAdjustedDdimer() applies age-adjustment for patients >50y", () => {
+  // Young patient <= 50y: standard 500 cutoff
+  const young = Diag.evaluateAgeAdjustedDdimer({ age: 35, ddimer: 450 });
+  assert.equal(young.cutoff, 500);
+  assert.equal(young.isElevated, false);
+  assert.equal(young.isAgeAdjusted, false);
+
+  // Elderly patient 70y: cutoff = 70 * 10 = 700
+  const elderlyNorm = Diag.evaluateAgeAdjustedDdimer({ age: 70, ddimer: 650 });
+  assert.equal(elderlyNorm.cutoff, 700);
+  assert.equal(elderlyNorm.isElevated, false); // 650 < 700 -> safely ruled out!
+  assert.equal(elderlyNorm.isAgeAdjusted, true);
+
+  // Elderly patient 70y elevated > 700
+  const elderlyElev = Diag.evaluateAgeAdjustedDdimer({ age: 70, ddimer: 750 });
+  assert.equal(elderlyElev.cutoff, 700);
+  assert.equal(elderlyElev.isElevated, true);
+  assert.ok(elderlyElev.recommendation.includes("angio-TK"));
+});
+
+test("diagnostics: evaluateLactateClearance() checks >=20% target in 2-4h", () => {
+  // Adequate clearance >= 20%
+  const good = Diag.evaluateLactateClearance({ lactate0: 4.0, lactate1: 2.0, hours: 2 });
+  assert.equal(good.clearancePct, 50.0);
+  assert.equal(good.isAdequate, true);
+  assert.ok(good.interpretation.includes("Prawidłowy klirens"));
+
+  // Inadequate clearance < 20%
+  const poor = Diag.evaluateLactateClearance({ lactate0: 4.0, lactate1: 3.6, hours: 2 });
+  assert.equal(poor.clearancePct, 10.0);
+  assert.equal(poor.isAdequate, false);
+  assert.ok(poor.recommendation.includes("eskalacja"));
+});
+
+test("diagnostics: evaluateABG() evaluates acid-base disturbance and Berlin ARDS P/F index", () => {
+  // Respiratory acidosis + Mild ARDS
+  const abg1 = Diag.evaluateABG({ ph: 7.26, pco2: 58, po2: 60, hco3: 25, fio2: 0.21 });
+  assert.ok(abg1.disturbance.includes("Kwasica oddechowa"));
+  assert.equal(abg1.pfRatio, 286);
+  assert.ok(abg1.ardsSeverity.includes("Łagodny ARDS") || abg1.ardsSeverity.includes("Łagodne uszkodzenie płuc"));
+
+  // Severe ARDS: PaO2 55 on FiO2 0.6 -> P/F = 92 <= 100
+  const abg2 = Diag.evaluateABG({ ph: 7.36, pco2: 42, po2: 55, hco3: 24, fio2: 0.6 });
+  assert.equal(abg2.pfRatio, 92);
+  assert.ok(abg2.ardsSeverity.includes("Ciężki ARDS"));
+});
+
+test("visit session & SOAP report: integrates diagnostics into [O] Objective and [A] Assessment", () => {
+  function formatSOAPWithDiagnostics(diagnosticsItems) {
+    const lines = [];
+    lines.push("[O] BADANIE PRZEDMIOTOWE I DIAGNOSTYKA (OBJECTIVE)");
+    if (diagnosticsItems && diagnosticsItems.length > 0) {
+      lines.push("• Przyłóżkowa ultrasonografia POCUS i panele laboratoryjne:");
+      diagnosticsItems.forEach((d) => {
+        lines.push(`  * [${d.type}] ${d.title}: ${d.summary}${d.action ? ` ➔ Zalecenie: ${d.action}` : ""}`);
+      });
+    }
+    lines.push("");
+    lines.push("[A] OCENA KLINICZNA I STRATYFIKACJA RYZYKA (ASSESSMENT)");
+    if (diagnosticsItems && diagnosticsItems.length > 0) {
+      const alertDiags = diagnosticsItems.filter((d) => d.alert || d.isPositive);
+      if (alertDiags.length > 0) {
+        lines.push("• Istotne patologie ultrasonograficzne i krytyczne wyniki lab (Red Flags):");
+        alertDiags.forEach((d) => {
+          lines.push(`  - ⚠️ ${d.title}: ${d.summary}`);
+        });
+      }
+    }
+    return lines.join("\n");
+  }
+
+  const sampleDiags = [
+    { type: "POCUS", title: "Protokół eFAST", summary: "DODATNI eFAST! Wolny płyn: Zachyłek Morisona", action: "Pilna laparotomia", isPositive: true, alert: true },
+    { type: "LAB", title: "hs-cTnT", summary: "Rule-in NSTEMI (65 ng/L)", action: "Pilna koronarografia", isPositive: false, alert: true },
+  ];
+
+  const soapText = formatSOAPWithDiagnostics(sampleDiags);
+  assert.ok(soapText.includes("[O] BADANIE PRZEDMIOTOWE I DIAGNOSTYKA (OBJECTIVE)"));
+  assert.ok(soapText.includes("Przyłóżkowa ultrasonografia POCUS i panele laboratoryjne:"));
+  assert.ok(soapText.includes("[POCUS] Protokół eFAST: DODATNI eFAST! Wolny płyn: Zachyłek Morisona ➔ Zalecenie: Pilna laparotomia"));
+  assert.ok(soapText.includes("[LAB] hs-cTnT: Rule-in NSTEMI (65 ng/L) ➔ Zalecenie: Pilna koronarografia"));
+  assert.ok(soapText.includes("[A] OCENA KLINICZNA I STRATYFIKACJA RYZYKA (ASSESSMENT)"));
+  assert.ok(soapText.includes("Istotne patologie ultrasonograficzne i krytyczne wyniki lab (Red Flags):"));
+  assert.ok(soapText.includes("⚠️ Protokół eFAST: DODATNI eFAST! Wolny płyn: Zachyłek Morisona"));
+  assert.ok(soapText.includes("⚠️ hs-cTnT: Rule-in NSTEMI (65 ng/L)"));
+});
+
 
 
 

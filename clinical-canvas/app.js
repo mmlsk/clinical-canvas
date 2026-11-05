@@ -30,6 +30,7 @@
     history: [],
     calculators: [],
     pharmacy: [],
+    diagnostics: [],
   };
   let currentPharmTab = "rko",
     currentPharmWeight = 70,
@@ -40,6 +41,16 @@
   const opioidInputs = { drugFrom: "morphine_po", doseFrom: 60, drugTo: "morphine_iv" };
   let npoaSearch = "",
     npoaCategory = "all";
+  let currentDiagTab = "efast";
+  const efastState = { ruq: "normal", luq: "normal", pelvic: "normal", pericardial: "normal", pleuralRight: "normal", pleuralLeft: "normal" };
+  const blueState = { profileType: "A", lungSliding: true, lungPoint: false, plaps: false, dvtPresent: false };
+  const focusState = { pericardialEffusion: "none", rvEnlargement: false, lvContractility: "normal", ivcDiameterMm: 18, ivcCollapsibility: 60, dvtFemoral: "compressible", dvtPopliteal: "compressible" };
+  const labState = {
+    cTnAssay: "hs-cTnT", cTn0: 10, cTn1: 12, cTnDeltaH: 1,
+    dDimerAge: 65, dDimerVal: 620,
+    lact0: 4.2, lact1: 2.8, lactH: 2,
+    abgPh: 7.28, abgPco2: 55, abgPo2: 65, abgHco3: 25, abgBe: -1, abgFio2: 0.21,
+  };
   let undo = [],
     redo = [],
     pendingSave,
@@ -545,7 +556,7 @@
   function updateSOAPBadge() {
     const badge = $("soap-badge");
     if (badge) {
-      const count = visitSession.history.length + (visitSession.pharmacy?.length || 0);
+      const count = visitSession.history.length + (visitSession.pharmacy?.length || 0) + (visitSession.diagnostics?.length || 0);
       badge.textContent = count;
       badge.hidden = count === 0;
     }
@@ -902,8 +913,10 @@
     const activeChild = cohort === "p" || activeWeight < 40;
     const contextualDrugs = findNodeContextualDrugs(n, activeWeight, activeChild);
     const tileDrugHTML = renderTileDrugBox(contextualDrugs, activeWeight);
+    const contextualDiags = findNodeContextualDiagnostics(n);
+    const tileDiagHTML = renderTileDiagBox(contextualDiags);
 
-    panel.innerHTML = `<div class="detail-head"><div class="kicker">${escape(TYPES[n.type])} · ${n.cohort === "a" ? "DOROŚLI" : n.cohort === "p" ? "DZIECI" : "WSPÓLNE"}</div><h2>${escape(n.title)}</h2><div class="meta">${n.custom ? "Treść własna / edytowana. Wymaga ponownej weryfikacji." : `Synteza źródeł sprawdzona: ${D.reviewed}. Nie oznacza aktualizacji wytycznej w tym dniu.`}</div><div class="detail-toolbar"><button data-action="edit">Edytuj krok</button><button data-action="child">+ Gałąź</button>${calculator ? `<button data-action="calculate" data-score="${calculator}">Oblicz ${calculator.toUpperCase()}</button>` : ""}</div></div><div class="detail-body"><p>${escape(d.body || "Brak opisu — możesz dodać własny.")}</p>${decisionCompartmentHTML}${tileDrugHTML}${SECTIONS.map(
+    panel.innerHTML = `<div class="detail-head"><div class="kicker">${escape(TYPES[n.type])} · ${n.cohort === "a" ? "DOROŚLI" : n.cohort === "p" ? "DZIECI" : "WSPÓLNE"}</div><h2>${escape(n.title)}</h2><div class="meta">${n.custom ? "Treść własna / edytowana. Wymaga ponownej weryfikacji." : `Synteza źródeł sprawdzona: ${D.reviewed}. Nie oznacza aktualizacji wytycznej w tym dniu.`}</div><div class="detail-toolbar"><button data-action="edit">Edytuj krok</button><button data-action="child">+ Gałąź</button>${calculator ? `<button data-action="calculate" data-score="${calculator}">Oblicz ${calculator.toUpperCase()}</button>` : ""}</div></div><div class="detail-body"><p>${escape(d.body || "Brak opisu — możesz dodać własny.")}</p>${decisionCompartmentHTML}${tileDiagHTML}${tileDrugHTML}${SECTIONS.map(
       ([key, label]) =>
         list(d[key]).length
           ? `<section class="detail-section ${key === "red" ? "red" : ""}"><h3>${label}</h3><ul>${list(
@@ -1874,6 +1887,12 @@
       lines.push("• Diagnostyka i badania pracowniane:");
       testsList.forEach((item) => lines.push(`  - ${item}`));
     }
+    if (visitSession.diagnostics && visitSession.diagnostics.length > 0) {
+      lines.push("• Przyłóżkowa ultrasonografia POCUS i panele laboratoryjne:");
+      visitSession.diagnostics.forEach((d) => {
+        lines.push(`  * [${d.type}] ${d.title}: ${d.summary}${d.action ? ` ➔ Zalecenie: ${d.action}` : ""}`);
+      });
+    }
     if (visitSession.calculators.length > 0) {
       lines.push("• Zastosowane skale i kalkulatory ryzyka:");
       visitSession.calculators.forEach((c) => {
@@ -1894,6 +1913,15 @@
     if (redList.size > 0) {
       lines.push("• Czerwone flagi / punkty krytyczne podlegające weryfikacji:");
       redList.forEach((item) => lines.push(`  - ${item}`));
+    }
+    if (visitSession.diagnostics && visitSession.diagnostics.length > 0) {
+      const alertDiags = visitSession.diagnostics.filter((d) => d.alert || d.isPositive);
+      if (alertDiags.length > 0) {
+        lines.push("• Istotne patologie ultrasonograficzne i krytyczne wyniki lab (Red Flags):");
+        alertDiags.forEach((d) => {
+          lines.push(`  - ⚠️ ${d.title}: ${d.summary}`);
+        });
+      }
     }
     const hasUrgent = visitedNodes.some((n) => n.type === "urgent");
     if (hasUrgent) {
@@ -1961,6 +1989,7 @@
     visitSession.history = [];
     visitSession.calculators = [];
     visitSession.pharmacy = [];
+    visitSession.diagnostics = [];
     checkedVars.clear();
     activeBranch = null;
     updateSOAPBadge();
@@ -2113,6 +2142,14 @@
 
     const activeWeight = currentPharmWeight || (cohort === "p" ? 15 : 70);
     const activeChild = cohort === "p" || activeWeight < 40;
+    const contextualDiags = findNodeContextualDiagnostics(n);
+    if (contextualDiags.length > 0) {
+      bodyHTML += `
+      <div class="wt-card">
+        <h3><span>Sugerowana diagnostyka przyłóżkowa POCUS / Lab</span></h3>
+        ${renderTileDiagBox(contextualDiags)}
+      </div>`;
+    }
     const contextualDrugs = findNodeContextualDrugs(n, activeWeight, activeChild);
     if (contextualDrugs.length > 0) {
       bodyHTML += `
@@ -2282,6 +2319,30 @@
                   <td><strong>${escape(p.name)}</strong></td>
                   <td><b>${escape(p.dose)}</b> (${escape(p.route || "i.v.")})</td>
                   <td>${escape(p.notes || "Zgodnie z protokołem")}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </section>
+      ` : ""}
+
+      ${visitSession.diagnostics && visitSession.diagnostics.length > 0 ? `
+        <section class="dossier-section">
+          <h2>Diagnostyka Przyłóżkowa POCUS i Badania Laboratoryjne ([O] Objective)</h2>
+          <table class="dossier-table">
+            <thead>
+              <tr>
+                <th>Protokół / Badanie</th>
+                <th>Wynik ultrasonograficzny / laboratoryjny</th>
+                <th>Interpretacja i Dalsze Zalecenia</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${visitSession.diagnostics.map((d) => `
+                <tr>
+                  <td><strong>${escape(d.title)}</strong><br><small style="color:#666">${escape(d.type)}</small></td>
+                  <td>${escape(d.summary)}</td>
+                  <td>${escape(d.action || "W normie")}</td>
                 </tr>
               `).join("")}
             </tbody>
@@ -3087,7 +3148,661 @@
       openPharmModal();
       return;
     }
+    const openDiagAction = ev.target.closest("[data-action='open-diag']");
+    if (openDiagAction) {
+      const targetTab = openDiagAction.dataset.diagTab || null;
+      openDiagnosticsModal(targetTab);
+      return;
+    }
   });
+
+  // --- Clinical Diagnostics Suite: POCUS & Acute Laboratory Medicine ---
+  function addDiagnosticRecord(item) {
+    if (!item || !item.title) return;
+    const existsIdx = visitSession.diagnostics.findIndex((d) => d.title === item.title);
+    if (existsIdx >= 0) {
+      visitSession.diagnostics[existsIdx] = item;
+    } else {
+      visitSession.diagnostics.push(item);
+    }
+    updateSOAPBadge();
+    toast(`Zapisano w karcie: ${item.title}`);
+
+    // Active decision support: match branch if pathological
+    if (item.alert || item.isPositive) {
+      const g = visibleGraphs()[0];
+      const outgoing = g ? g.edges.filter((e) => e.from === selected?.id) : [];
+      const matched = outgoing.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return /\btak\b|dodatn|obecn|wysok|ciężk|piln|eskalac|drenaż|tamponad|zator|zawał|krwaw/.test(lbl);
+      });
+      if (matched) {
+        activeBranch = matched.id;
+        toast(`Dopasowano gałąź eskalacji: ${matched.label || "Pilne postępowanie"}`);
+        draw();
+        renderPanel();
+        if (walkthroughActive) renderWalkthrough();
+      }
+    }
+  }
+
+  function findNodeContextualDiagnostics(node) {
+    const D = (typeof window !== "undefined" && window.ClinicalDiagnostics) || (typeof globalThis !== "undefined" && globalThis.ClinicalDiagnostics);
+    if (!node || !D) return [];
+    const text = ((node.title || "") + " " + (node.data?.body || "") + " " + list(node.data?.red).join(" ")).toLowerCase();
+    const items = [];
+
+    // Trauma / Shock -> eFAST
+    if (/uraz|wypad|krwotok|wstrząs hipowol|tępy uraz|obrażen/.test(text)) {
+      items.push({
+        type: "POCUS",
+        title: "Protokół eFAST",
+        summary: "Ocena 6 okien anatomicznych pod kątem wolnego płynu i odmy",
+        tab: "efast",
+      });
+    }
+
+    // Dyspnea / Asthma / COPD / Pneumothorax / Pulmonary edema -> BLUE Protocol
+    if (/duszno|astm|obturac|pochp|obrzęk płuc|odm|świsty|rzężen/.test(text)) {
+      items.push({
+        type: "POCUS",
+        title: "Protokół BLUE",
+        summary: "Ultrasonograficzna ocena profili płucnych (A, B, B', A', C, PLAPS)",
+        tab: "blue",
+      });
+    }
+
+    // Chest pain / ACS / Cardiac / Tamponade / PE -> hs-cTn, D-dimer, FOCUS
+    if (/klatce piersiow|zawał|ozw|dławic|nstem|stemi|zamostkow/.test(text)) {
+      items.push({
+        type: "LAB",
+        title: "Kinetyka hs-cTn 0/1h",
+        summary: "Algorytm ESC wykluczenia / potwierdzenia zawału serca NSTEMI",
+        tab: "lab",
+      });
+    }
+
+    if (/zator|d-dimer|zakrzep|dvt|duszno.*nagł/.test(text)) {
+      items.push({
+        type: "LAB",
+        title: "Age-adjusted D-dimer",
+        summary: "Próg odcięcia dostosowany do wieku (>50 lat: wiek × 10 µg/L)",
+        tab: "lab",
+      });
+      items.push({
+        type: "POCUS",
+        title: "FOCUS & DVT CUS",
+        summary: "Ocena przeciążenia prawej komory (RV strain) i kompresji żył",
+        tab: "focus",
+      });
+    }
+
+    // Sepsis / Shock / Acidosis -> Lactates, ABG
+    if (/seps|wstrząs|posocznic|kwasic|mleczan|resuscytac/.test(text)) {
+      items.push({
+        type: "LAB",
+        title: "Klirens mleczanów",
+        summary: "Ocena ustępowania hipoperfuzji (spadek ≥20% w 2-4h)",
+        tab: "lab",
+      });
+      items.push({
+        type: "LAB",
+        title: "Gazometria (ABG) & P/F",
+        summary: "Równowaga kwasowo-zasadowa i wskaźnik Horowitza (PaO2/FiO2)",
+        tab: "lab",
+      });
+    }
+
+    return items;
+  }
+
+  function renderTileDiagBox(items) {
+    if (!items || items.length === 0) return "";
+    return `
+      <section class="tile-diag-box">
+        <div class="tile-diag-head">
+          <span class="tile-diag-title">🔬 Sugerowana diagnostyka przyłóżkowa POCUS / Lab</span>
+          <button type="button" class="diag-quick-open-btn" data-action="open-diag">Otwórz pracownię ➔</button>
+        </div>
+        <div class="tile-diag-list">
+          ${items.map((item) => {
+            const isRecorded = visitSession.diagnostics.some((d) => d.title === item.title);
+            return `
+              <div class="tile-diag-item">
+                <div>
+                  <strong>[${escape(item.type)}] ${escape(item.title)}</strong>: <span style="color:#555">${escape(item.summary)}</span>
+                </div>
+                <div style="display:flex;gap:6px;">
+                  <button type="button" class="tile-diag-add-btn ${isRecorded ? "added" : ""}" data-diag-title="${escape(item.title)}" data-diag-tab="${escape(item.tab)}" data-action="open-diag">
+                    ${isRecorded ? "✓ W karcie" : "Zbadaj ➔"}
+                  </button>
+                </div>
+              </div>`;
+          }).join("")}
+        </div>
+      </section>`;
+  }
+
+  function openDiagnosticsModal(tab = null) {
+    const dialog = $("diagnostics-dialog");
+    if (!dialog) return;
+    if (tab) currentDiagTab = tab;
+    renderDiagnosticsModal(currentDiagTab);
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function closeDiagnosticsModal() {
+    const dialog = $("diagnostics-dialog");
+    if (dialog?.open) dialog.close();
+  }
+
+  function renderDiagnosticsModal(tab = "efast") {
+    currentDiagTab = tab;
+    const D = (typeof window !== "undefined" && window.ClinicalDiagnostics) || (typeof globalThis !== "undefined" && globalThis.ClinicalDiagnostics);
+    const panelEl = $("diagnostics-panel");
+    const descEl = $("diagnostics-description");
+    if (!panelEl || !descEl || !D) return;
+
+    const tabs = document.querySelectorAll(".diagnostics-tab");
+    tabs.forEach((t) => {
+      const isSel = t.dataset.diagTab === tab;
+      t.setAttribute("aria-selected", String(isSel));
+    });
+
+    if (tab === "efast") {
+      descEl.textContent = "Protokół eFAST (Extended Focused Assessment with Sonography in Trauma): ocena 6 okien anatomicznych w poszukiwaniu wolnego płynu i odmy opłucnowej.";
+      panelEl.innerHTML = renderDiagEFAST(D);
+    } else if (tab === "blue") {
+      descEl.textContent = "Protokół BLUE (Bedside Lung Ultrasound in Emergency — Lichtenstein): różnicowanie ostrej niewydolności oddechowej na podstawie profili płucnych.";
+      panelEl.innerHTML = renderDiagBLUE(D);
+    } else if (tab === "focus") {
+      descEl.textContent = "Echokardiografia przyłóżkowa w stanach nagłych (FOCUS) oraz 2-punktowa ultrasonografia uciskowa żył (DVT CUS).";
+      panelEl.innerHTML = renderDiagFOCUS(D);
+    } else if (tab === "lab") {
+      descEl.textContent = "Kluczowe algorytmy laboratoryjne medycyny ratunkowej: kinetyka troponiny ESC, D-dimer skorygowany o wiek, klirens mleczanów i gazometria ze wskaźnikiem Horowitza.";
+      panelEl.innerHTML = renderDiagLab(D);
+    }
+  }
+
+  function renderDiagEFAST(D) {
+    const evalResult = D.evaluateEFAST(efastState);
+    const windowsDef = [
+      { key: "ruq", label: "RUQ / Morison", tag: "Wątroba / Nerka", desc: "Zachyłek wątrobowo-nerkowy" },
+      { key: "luq", label: "LUQ / Śledziona", tag: "Śledziona / Nerka", desc: "Zachyłek śledzionowo-nerkowy" },
+      { key: "pelvic", label: "Miednica", tag: "Pęcherz / Macica", desc: "Zachyłek Douglasa / pęcherzowo-odbytniczy" },
+      { key: "pericardial", label: "Osierdzie", tag: "Podmieczykowate", desc: "Worek osierdziowy i kurczliwość" },
+      { key: "pleuralRight", label: "Opłucna prawa", tag: "Płuca RKO", desc: "Linia środkowo-obojczykowa i pachowa" },
+      { key: "pleuralLeft", label: "Opłucna lewa", tag: "Płuca LKO", desc: "Linia środkowo-obojczykowa i pachowa" },
+    ];
+
+    const isRecorded = visitSession.diagnostics.some((d) => d.title === "Protokół eFAST");
+
+    return `
+      <div>
+        <div class="diag-grid">
+          ${windowsDef.map((win) => {
+            const currentVal = efastState[win.key];
+            const isPleural = win.key.startsWith("pleural");
+            const isPericardial = win.key === "pericardial";
+            return `
+              <div class="pocus-window-card">
+                <div class="pocus-window-head">
+                  <strong>${escape(win.label)}</strong>
+                  <span class="pocus-window-tag">${escape(win.tag)}</span>
+                </div>
+                <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${escape(win.desc)}</div>
+                <div class="pocus-status-btns">
+                  <button type="button" class="pocus-btn normal ${currentVal === "normal" ? "selected" : ""}" data-efast-win="${win.key}" data-val="normal">✓ Norma</button>
+                  <button type="button" class="pocus-btn fluid ${currentVal === "fluid" ? "selected" : ""}" data-efast-win="${win.key}" data-val="fluid">+ Płyn</button>
+                  ${isPericardial ? `<button type="button" class="pocus-btn tamponade ${currentVal === "tamponade" ? "selected" : ""}" data-efast-win="${win.key}" data-val="tamponade">! Tamponada</button>` : ""}
+                  ${isPleural ? `<button type="button" class="pocus-btn ptx ${currentVal === "pneumothorax" ? "selected" : ""}" data-efast-win="${win.key}" data-val="pneumothorax">! Odma</button>` : ""}
+                  <button type="button" class="pocus-btn ${currentVal === "nt" ? "selected" : ""}" data-efast-win="${win.key}" data-val="nt">NT</button>
+                </div>
+              </div>`;
+          }).join("")}
+        </div>
+
+        <div class="diag-alert ${evalResult.isPositive ? "" : "ok"}">
+          <strong>${evalResult.isPositive ? "⚠️ WYNIK PATOLOGICZNY:" : "✓ WYNIK PRAWIDŁOWY:"}</strong> ${escape(evalResult.summary)}
+          ${evalResult.action ? `<br><strong>Postępowanie:</strong> ${escape(evalResult.action)}` : ""}
+        </div>
+
+        <button type="button" id="diag-save-efast-btn" class="pharm-add-btn ${isRecorded ? "added" : ""}" style="font-size:12.5px;padding:8px 14px;">
+          ${isRecorded ? "✓ Zaktualizowano w karcie" : "+ Dołącz wynik eFAST do dokumentacji"}
+        </button>
+      </div>`;
+  }
+
+  function renderDiagBLUE(D) {
+    const res = D.evaluateBLUE(blueState);
+    const isRecorded = visitSession.diagnostics.some((d) => d.title === "Protokół BLUE");
+
+    return `
+      <div class="diag-grid">
+        <div class="diag-card">
+          <h4><span>Profil ultrasonograficzny płuc (BLUE)</span></h4>
+          <div class="pharm-field">
+            <label for="blue-profile-select">Profil dominujący:</label>
+            <select id="blue-profile-select">
+              <option value="A" ${blueState.profileType === "A" ? "selected" : ""}>Profil A (linie A, ślizganie obecne) ➔ Astma / POChP / ZP</option>
+              <option value="B" ${blueState.profileType === "B" ? "selected" : ""}>Profil B (liczne obustronne linie B) ➔ Obrzęk płuc kardiogenny</option>
+              <option value="B_prime" ${blueState.profileType === "B_prime" ? "selected" : ""}>Profil B' (linie B bez ślizgania) ➔ Zapalenie płuc</option>
+              <option value="A_prime" ${blueState.profileType === "A_prime" ? "selected" : ""}>Profil A' (linie A bez ślizgania + punkt płucny) ➔ Odma</option>
+              <option value="C" ${blueState.profileType === "C" ? "selected" : ""}>Profil C (konsolidacja podopłucnowa) ➔ Zapalenie płuc</option>
+            </select>
+          </div>
+
+          <div style="margin: 10px 0;">
+            <label class="pocus-sign-check">
+              <input type="checkbox" id="blue-sliding-chk" ${blueState.lungSliding ? "checked" : ""}>
+              <span><strong>Ślizganie opłucnej (Lung sliding)</strong> zachowane (objaw brzegu morskiego w M-mode)</span>
+            </label>
+            <label class="pocus-sign-check">
+              <input type="checkbox" id="blue-lungpoint-chk" ${blueState.lungPoint ? "checked" : ""}>
+              <span><strong>Punkt płucny (Lung point)</strong> obecny (patognomoniczny dla odmy)</span>
+            </label>
+            <label class="pocus-sign-check">
+              <input type="checkbox" id="blue-plaps-chk" ${blueState.plaps ? "checked" : ""}>
+              <span><strong>Objaw PLAPS</strong> (płyn w zachyłku przeponowo-żebrowym w linii pachowej)</span>
+            </label>
+            <label class="pocus-sign-check">
+              <input type="checkbox" id="blue-dvt-chk" ${blueState.dvtPresent ? "checked" : ""}>
+              <span><strong>Dodatni DVT CUS</strong> (brak zapadalności żyły udowej / podkolanowej)</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="diag-card">
+          <h4><span>Interpretacja kliniczna Lichtensteina</span></h4>
+          <div class="pharm-card-dose">Rozpoznanie: ${escape(res.primaryDiagnosis)}</div>
+          <div style="font-size:12.5px;line-height:1.6;margin-bottom:12px;">
+            <strong>Profil BLUE:</strong> ${escape(res.profile)}<br>
+            <strong>Zalecane postępowanie:</strong> ${escape(res.action)}
+          </div>
+          ${res.alert ? `<div class="diag-alert" style="margin:8px 0 12px;">⚠️ Stan zagrożenia życia — pilna interwencja!</div>` : ""}
+          <button type="button" id="diag-save-blue-btn" class="pharm-add-btn ${isRecorded ? "added" : ""}">
+            ${isRecorded ? "✓ Zaktualizowano w karcie" : "+ Dołącz protokół BLUE do karty"}
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function renderDiagFOCUS(D) {
+    const res = D.evaluateFOCUS(focusState);
+    const isRecorded = visitSession.diagnostics.some((d) => d.title === "FOCUS & DVT CUS");
+
+    return `
+      <div class="diag-grid">
+        <div class="diag-card">
+          <h4><span>Parametry echokardiograficzne (FOCUS)</span></h4>
+          <div class="pharm-field">
+            <label for="focus-effusion-select">Płyn w worku osierdziowym:</label>
+            <select id="focus-effusion-select">
+              <option value="none" ${focusState.pericardialEffusion === "none" ? "selected" : ""}>Brak płynu w osierdziu</option>
+              <option value="small" ${focusState.pericardialEffusion === "small" ? "selected" : ""}>Mały płyn (<10 mm)</option>
+              <option value="moderate" ${focusState.pericardialEffusion === "moderate" ? "selected" : ""}>Umiarkowany płyn (10-20 mm)</option>
+              <option value="tamponade" ${focusState.pericardialEffusion === "tamponade" ? "selected" : ""}>Tamponada (rozkurczowe zapadanie RV/RA)</option>
+            </select>
+          </div>
+          <div class="pharm-field">
+            <label for="focus-rv-select">Wielkość i przeciążenie prawej komory (RV):</label>
+            <select id="focus-rv-select">
+              <option value="false" ${!focusState.rvEnlargement ? "selected" : ""}>Prawidłowa RV (RV < LV)</option>
+              <option value="true" ${focusState.rvEnlargement ? "selected" : ""}>Przeciążenie prawej komory (RV > LV / McConnell sign w ZP)</option>
+            </select>
+          </div>
+          <div class="pharm-field">
+            <label for="focus-lv-select">Kurczliwość lewej komory (Eyeball EF):</label>
+            <select id="focus-lv-select">
+              <option value="normal" ${focusState.lvContractility === "normal" ? "selected" : ""}>Prawidłowa frakcja wyrzutowa (EF 55-70%)</option>
+              <option value="hyperdynamic" ${focusState.lvContractility === "hyperdynamic" ? "selected" : ""}>Hiperdynamiczna (sepsa / hipowolemia)</option>
+              <option value="mild" ${focusState.lvContractility === "mild" ? "selected" : ""}>Łagodna dysfunkcja (EF 40-50%)</option>
+              <option value="severe" ${focusState.lvContractility === "severe" ? "selected" : ""}>Ciężka dysfunkcja skurczowa (EF < 30%)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="diag-card">
+          <h4><span>Żyła główna dolna (IVC) & Kompresja żył (DVT)</span></h4>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="focus-ivc-dia">Średnica IVC [mm]:</label>
+              <input id="focus-ivc-dia" type="number" min="5" max="35" value="${focusState.ivcDiameterMm}">
+            </div>
+            <div class="pharm-field">
+              <label for="focus-ivc-col">Zapadalność na wdechu [%]:</label>
+              <input id="focus-ivc-col" type="number" min="0" max="100" value="${focusState.ivcCollapsibility}">
+            </div>
+          </div>
+          <div class="pharm-field">
+            <label for="focus-dvt-fem">Żyła udowa wspólna (CFV):</label>
+            <select id="focus-dvt-fem">
+              <option value="compressible" ${focusState.dvtFemoral === "compressible" ? "selected" : ""}>Prawidłowa kompresja (podatna)</option>
+              <option value="non_compressible" ${focusState.dvtFemoral === "non_compressible" ? "selected" : ""}>Brak kompresji (DVT dodatnia)</option>
+            </select>
+          </div>
+          <div class="pharm-field">
+            <label for="focus-dvt-pop">Żyła podkolanowa (PV):</label>
+            <select id="focus-dvt-pop">
+              <option value="compressible" ${focusState.dvtPopliteal === "compressible" ? "selected" : ""}>Prawidłowa kompresja (podatna)</option>
+              <option value="non_compressible" ${focusState.dvtPopliteal === "non_compressible" ? "selected" : ""}>Brak kompresji (DVT dodatnia)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="diag-card" style="grid-column: 1 / -1;">
+          <h4><span>Syntetyczna ocena hemodynamiczna FOCUS</span></h4>
+          <div class="diag-result-box">
+            <strong>Ocena wolemii i CVP:</strong> ${escape(res.volumeStatus)}<br>
+            <strong>Wnioski:</strong> ${escape(res.summary)}<br>
+            <strong>Postępowanie:</strong> ${escape(res.action)}
+          </div>
+          ${res.alert ? `<div class="diag-alert">⚠️ Zidentyfikowano krytyczną patologię sercowo-naczyniową!</div>` : ""}
+          <button type="button" id="diag-save-focus-btn" class="pharm-add-btn ${isRecorded ? "added" : ""}" style="margin-top:10px;">
+            ${isRecorded ? "✓ Zaktualizowano w karcie" : "+ Dołącz badanie FOCUS & DVT do karty"}
+          </button>
+        </div>
+      </div>`;
+  }
+
+  function renderDiagLab(D) {
+    const ctnRes = D.evaluateHsTroponin({
+      assay: labState.cTnAssay,
+      ctn0: labState.cTn0,
+      ctn1: labState.cTn1,
+      deltaHours: labState.cTnDeltaH,
+    });
+    const ddimerRes = D.evaluateAgeAdjustedDdimer({
+      age: labState.dDimerAge,
+      ddimer: labState.dDimerVal,
+    });
+    const lactRes = D.evaluateLactateClearance({
+      lactate0: labState.lact0,
+      lactate1: labState.lact1,
+      hours: labState.lactH,
+    });
+    const abgRes = D.evaluateABG({
+      ph: labState.abgPh,
+      pco2: labState.abgPco2,
+      po2: labState.abgPo2,
+      hco3: labState.abgHco3,
+      be: labState.abgBe,
+      fio2: labState.abgFio2,
+    });
+
+    const isCtnRecorded = visitSession.diagnostics.some((d) => d.title.includes("hs-cTn"));
+    const isDdimerRecorded = visitSession.diagnostics.some((d) => d.title.includes("D-dimer"));
+    const isLactRecorded = visitSession.diagnostics.some((d) => d.title.includes("mleczanów"));
+    const isAbgRecorded = visitSession.diagnostics.some((d) => d.title.includes("Gazometria"));
+
+    return `
+      <div class="diag-grid">
+        <!-- hs-cTn ESC 0/1h kinetics -->
+        <div class="diag-card">
+          <h4><span>1. Kinetyka hs-cTn 0/1h (ESC NSTE-ACS)</span></h4>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="lab-ctn-assay">Test troponiny:</label>
+              <select id="lab-ctn-assay">
+                <option value="hs-cTnT" ${labState.cTnAssay === "hs-cTnT" ? "selected" : ""}>hs-cTnT (Roche)</option>
+                <option value="hs-cTnI" ${labState.cTnAssay === "hs-cTnI" ? "selected" : ""}>hs-cTnI (Abbott/Siemens)</option>
+              </select>
+            </div>
+            <div class="pharm-field">
+              <label for="lab-ctn-0">0h [ng/L]:</label>
+              <input id="lab-ctn-0" type="number" value="${labState.cTn0}">
+            </div>
+          </div>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="lab-ctn-1">1h kontrola [ng/L]:</label>
+              <input id="lab-ctn-1" type="number" value="${labState.cTn1}">
+            </div>
+            <div class="pharm-field">
+              <label for="lab-ctn-delta">Odstęp [godz.]:</label>
+              <input id="lab-ctn-delta" type="number" value="${labState.cTnDeltaH}" min="1" max="3">
+            </div>
+          </div>
+          <div class="diag-result-box">
+            <strong>Kategoria ESC:</strong> <span style="text-transform:uppercase;font-weight:700;color:${ctnRes.category === "rule_in" ? "#b91c1c" : ctnRes.category === "rule_out" ? "#15803d" : "#b45309"}">${ctnRes.category}</span><br>
+            ${escape(ctnRes.interpretation)}<br>
+            <small style="color:var(--muted)">${escape(ctnRes.recommendation)}</small>
+          </div>
+          <button type="button" id="diag-save-ctn-btn" class="pharm-add-btn ${isCtnRecorded ? "added" : ""}" style="margin-top:10px;">
+            ${isCtnRecorded ? "✓ W karcie" : "+ Dołącz hs-cTn do karty"}
+          </button>
+        </div>
+
+        <!-- Age-adjusted D-dimer -->
+        <div class="diag-card">
+          <h4><span>2. Age-Adjusted D-Dimer (ADJUST-PE)</span></h4>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="lab-ddimer-age">Wiek pacjenta [lata]:</label>
+              <input id="lab-ddimer-age" type="number" value="${labState.dDimerAge}">
+            </div>
+            <div class="pharm-field">
+              <label for="lab-ddimer-val">D-dimery [µg/L]:</label>
+              <input id="lab-ddimer-val" type="number" value="${labState.dDimerVal}">
+            </div>
+          </div>
+          <div class="diag-result-box">
+            <strong>Próg odcięcia:</strong> ${ddimerRes.cutoff} µg/L ${ddimerRes.isAgeAdjusted ? "(skorygowany o wiek)" : "(standardowy)"}<br>
+            <strong>Status:</strong> ${ddimerRes.isElevated ? "<span style='color:#b91c1c;font-weight:700;'>PODWYŻSZONY (+)</span>" : "<span style='color:#15803d;font-weight:700;'>UJEMNY (-)</span>"}<br>
+            <small style="color:var(--muted)">${escape(ddimerRes.recommendation)}</small>
+          </div>
+          <button type="button" id="diag-save-ddimer-btn" class="pharm-add-btn ${isDdimerRecorded ? "added" : ""}" style="margin-top:10px;">
+            ${isDdimerRecorded ? "✓ W karcie" : "+ Dołącz D-dimer do karty"}
+          </button>
+        </div>
+
+        <!-- Lactate clearance -->
+        <div class="diag-card">
+          <h4><span>3. Klirens mleczanów w sepsie / wstrząsie</span></h4>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="lab-lact-0">Mleczany 0h [mmol/L]:</label>
+              <input id="lab-lact-0" type="number" step="0.1" value="${labState.lact0}">
+            </div>
+            <div class="pharm-field">
+              <label for="lab-lact-1">Mleczany kontrola [mmol/L]:</label>
+              <input id="lab-lact-1" type="number" step="0.1" value="${labState.lact1}">
+            </div>
+          </div>
+          <div class="diag-result-box">
+            <strong>Klirens mleczanów:</strong> ${lactRes.clearancePct}% w czasie ${lactRes.hours}h (${lactRes.isAdequate ? "≥20% — norma" : "<20% — niedostateczny"})<br>
+            <small style="color:var(--muted)">${escape(lactRes.recommendation)}</small>
+          </div>
+          <button type="button" id="diag-save-lact-btn" class="pharm-add-btn ${isLactRecorded ? "added" : ""}" style="margin-top:10px;">
+            ${isLactRecorded ? "✓ W karcie" : "+ Dołącz mleczany do karty"}
+          </button>
+        </div>
+
+        <!-- ABG & Horowitz index -->
+        <div class="diag-card">
+          <h4><span>4. Gazometria (ABG) & Wskaźnik Horowitza</span></h4>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="lab-abg-ph">pH:</label>
+              <input id="lab-abg-ph" type="number" step="0.01" value="${labState.abgPh}">
+            </div>
+            <div class="pharm-field">
+              <label for="lab-abg-pco2">pCO2 [mmHg]:</label>
+              <input id="lab-abg-pco2" type="number" value="${labState.abgPco2}">
+            </div>
+          </div>
+          <div class="pharm-calc-pair">
+            <div class="pharm-field">
+              <label for="lab-abg-po2">pO2 [mmHg]:</label>
+              <input id="lab-abg-po2" type="number" value="${labState.abgPo2}">
+            </div>
+            <div class="pharm-field">
+              <label for="lab-abg-fio2">FiO2 (0.21 - 1.0):</label>
+              <input id="lab-abg-fio2" type="number" step="0.05" value="${labState.abgFio2}">
+            </div>
+          </div>
+          <div class="diag-result-box">
+            <strong>Zaburzenie:</strong> ${escape(abgRes.disturbance)}<br>
+            <strong>PaO2/FiO2:</strong> ${abgRes.pfRatio} mmHg ➔ ${escape(abgRes.ardsSeverity)}
+          </div>
+          <button type="button" id="diag-save-abg-btn" class="pharm-add-btn ${isAbgRecorded ? "added" : ""}" style="margin-top:10px;">
+            ${isAbgRecorded ? "✓ W karcie" : "+ Dołącz gazometrię do karty"}
+          </button>
+        </div>
+      </div>`;
+  }
+
+  // Event handlers for Diagnostics Suite
+  const diagBtn = $("diagnostics-btn");
+  if (diagBtn) diagBtn.onclick = () => openDiagnosticsModal();
+  const wtDiagBtn = $("wt-diagnostics-btn");
+  if (wtDiagBtn) wtDiagBtn.onclick = () => openDiagnosticsModal();
+  const diagCloseBtn = $("diagnostics-close");
+  if (diagCloseBtn) diagCloseBtn.onclick = closeDiagnosticsModal;
+
+  const diagTabsContainer = document.querySelector(".diagnostics-tabs");
+  if (diagTabsContainer) {
+    diagTabsContainer.addEventListener("click", (ev) => {
+      const tabBtn = ev.target.closest("[data-diag-tab]");
+      if (tabBtn) {
+        renderDiagnosticsModal(tabBtn.dataset.diagTab);
+      }
+    });
+  }
+
+  const diagPanelEl = $("diagnostics-panel");
+  if (diagPanelEl) {
+    diagPanelEl.addEventListener("click", (ev) => {
+      const efastBtn = ev.target.closest("[data-efast-win]");
+      if (efastBtn) {
+        const win = efastBtn.dataset.efastWin;
+        const val = efastBtn.dataset.val;
+        efastState[win] = val;
+        renderDiagnosticsModal("efast");
+        return;
+      }
+
+      const D = (typeof window !== "undefined" && window.ClinicalDiagnostics) || (typeof globalThis !== "undefined" && globalThis.ClinicalDiagnostics);
+      if (!D) return;
+
+      if (ev.target.id === "diag-save-efast-btn") {
+        const res = D.evaluateEFAST(efastState);
+        addDiagnosticRecord({
+          type: "POCUS",
+          title: "Protokół eFAST",
+          summary: res.summary,
+          action: res.action,
+          isPositive: res.isPositive,
+          alert: res.hasTamponade || (res.isPositive && res.hasPneumothorax),
+        });
+        renderDiagnosticsModal("efast");
+      } else if (ev.target.id === "diag-save-blue-btn") {
+        const res = D.evaluateBLUE(blueState);
+        addDiagnosticRecord({
+          type: "POCUS",
+          title: "Protokół BLUE",
+          summary: res.summary,
+          action: res.action,
+          alert: res.alert,
+        });
+        renderDiagnosticsModal("blue");
+      } else if (ev.target.id === "diag-save-focus-btn") {
+        const res = D.evaluateFOCUS(focusState);
+        addDiagnosticRecord({
+          type: "POCUS",
+          title: "FOCUS & DVT CUS",
+          summary: res.summary,
+          action: res.action,
+          alert: res.alert,
+        });
+        renderDiagnosticsModal("focus");
+      } else if (ev.target.id === "diag-save-ctn-btn") {
+        const res = D.evaluateHsTroponin({
+          assay: labState.cTnAssay, ctn0: labState.cTn0, ctn1: labState.cTn1, deltaHours: labState.cTnDeltaH,
+        });
+        addDiagnosticRecord({
+          type: "LAB",
+          title: `hs-cTn (${res.assay})`,
+          summary: res.interpretation,
+          action: res.recommendation,
+          alert: res.category === "rule_in",
+        });
+        renderDiagnosticsModal("lab");
+      } else if (ev.target.id === "diag-save-ddimer-btn") {
+        const res = D.evaluateAgeAdjustedDdimer({ age: labState.dDimerAge, ddimer: labState.dDimerVal });
+        addDiagnosticRecord({
+          type: "LAB",
+          title: "Age-adjusted D-dimer",
+          summary: res.interpretation,
+          action: res.recommendation,
+          alert: res.isElevated,
+        });
+        renderDiagnosticsModal("lab");
+      } else if (ev.target.id === "diag-save-lact-btn") {
+        const res = D.evaluateLactateClearance({ lactate0: labState.lact0, lactate1: labState.lact1, hours: labState.lactH });
+        addDiagnosticRecord({
+          type: "LAB",
+          title: "Klirens mleczanów",
+          summary: res.interpretation,
+          action: res.recommendation,
+          alert: !res.isAdequate,
+        });
+        renderDiagnosticsModal("lab");
+      } else if (ev.target.id === "diag-save-abg-btn") {
+        const res = D.evaluateABG({ ph: labState.abgPh, pco2: labState.abgPco2, po2: labState.abgPo2, hco3: labState.abgHco3, be: labState.abgBe, fio2: labState.abgFio2 });
+        addDiagnosticRecord({
+          type: "LAB",
+          title: "Gazometria (ABG)",
+          summary: res.interpretation,
+          action: res.ardsSeverity,
+          alert: res.pfRatio <= 200,
+        });
+        renderDiagnosticsModal("lab");
+      }
+    });
+
+    diagPanelEl.addEventListener("change", (ev) => {
+      const id = ev.target.id;
+      if (id === "blue-profile-select") blueState.profileType = ev.target.value;
+      else if (id === "blue-sliding-chk") blueState.lungSliding = ev.target.checked;
+      else if (id === "blue-lungpoint-chk") blueState.lungPoint = ev.target.checked;
+      else if (id === "blue-plaps-chk") blueState.plaps = ev.target.checked;
+      else if (id === "blue-dvt-chk") blueState.dvtPresent = ev.target.checked;
+      else if (id === "focus-effusion-select") focusState.pericardialEffusion = ev.target.value;
+      else if (id === "focus-rv-select") focusState.rvEnlargement = ev.target.value === "true";
+      else if (id === "focus-lv-select") focusState.lvContractility = ev.target.value;
+      else if (id === "focus-dvt-fem") focusState.dvtFemoral = ev.target.value;
+      else if (id === "focus-dvt-pop") focusState.dvtPopliteal = ev.target.value;
+      else if (id === "lab-ctn-assay") labState.cTnAssay = ev.target.value;
+      renderDiagnosticsModal(currentDiagTab);
+    });
+
+    diagPanelEl.addEventListener("input", (ev) => {
+      const id = ev.target.id;
+      if (id === "focus-ivc-dia") focusState.ivcDiameterMm = parseFloat(ev.target.value) || 18;
+      else if (id === "focus-ivc-col") focusState.ivcCollapsibility = parseFloat(ev.target.value) || 50;
+      else if (id === "lab-ctn-0") labState.cTn0 = parseFloat(ev.target.value) || 0;
+      else if (id === "lab-ctn-1") labState.cTn1 = parseFloat(ev.target.value) || 0;
+      else if (id === "lab-ctn-delta") labState.cTnDeltaH = parseFloat(ev.target.value) || 1;
+      else if (id === "lab-ddimer-age") labState.dDimerAge = parseFloat(ev.target.value) || 50;
+      else if (id === "lab-ddimer-val") labState.dDimerVal = parseFloat(ev.target.value) || 0;
+      else if (id === "lab-lact-0") labState.lact0 = parseFloat(ev.target.value) || 0;
+      else if (id === "lab-lact-1") labState.lact1 = parseFloat(ev.target.value) || 0;
+      else if (id === "lab-abg-ph") labState.abgPh = parseFloat(ev.target.value) || 7.4;
+      else if (id === "lab-abg-pco2") labState.abgPco2 = parseFloat(ev.target.value) || 40;
+      else if (id === "lab-abg-po2") labState.abgPo2 = parseFloat(ev.target.value) || 90;
+      else if (id === "lab-abg-fio2") labState.abgFio2 = parseFloat(ev.target.value) || 0.21;
+      renderDiagnosticsModal(currentDiagTab);
+    });
+  }
+
+  const diagAddSoapBtn = $("diagnostics-add-soap-btn");
+  if (diagAddSoapBtn) {
+    diagAddSoapBtn.onclick = () => {
+      closeDiagnosticsModal();
+      openSOAPDialog();
+    };
+  }
 
   window.ClinicalVisit = {
     session: visitSession,
@@ -3104,6 +3819,10 @@
     openPharmModal,
     closePharmModal,
     findNodeContextualDrugs,
+    addDiagnosticRecord,
+    openDiagnosticsModal,
+    closeDiagnosticsModal,
+    findNodeContextualDiagnostics,
   };
 
   window.addEventListener("pagehide", () => {

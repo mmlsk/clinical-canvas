@@ -16,6 +16,7 @@
     <script defer src="graph-model.js"></script>
     <script defer src="score-engine.js"></script>
     <script defer src="pharmacology.js"></script>
+    <script defer src="diagnostics.js"></script>
     <script defer src="app.js"></script>
     <script defer src="calculators.js"></script>
   </head>
@@ -29,6 +30,7 @@
         <button id="walkthrough-btn" class="primary">🚀 Tryb dyżurowy</button>
         <button id="calculators">Kalkulatory</button>
         <button id="pharm-btn">💊 Leki & Płyny</button>
+        <button id="diagnostics-btn">🔬 POCUS & Lab</button>
         <button id="soap-report">📋 Raport SOAP <span id="soap-badge" class="badge">0</span></button>
         <button id="dossier-btn">📄 PDF Dossier</button>
         <button id="theme" aria-label="Zmień motyw">Motyw</button>
@@ -188,6 +190,7 @@
           <h2 id="wt-step-title">Krok algorytmu</h2>
         </div>
         <div class="walkthrough-top-controls">
+          <button id="wt-diagnostics-btn">🔬 POCUS & Lab</button>
           <button id="wt-pharm-btn">💊 Leki & Płyny</button>
           <button id="wt-pdf-btn">📄 PDF Dossier</button>
           <button id="wt-soap-btn">📋 Raport SOAP</button>
@@ -271,6 +274,28 @@
       </div>
       <div class="pharm-footer">
         <button id="pharm-add-plan-btn" class="primary">✓ Dołącz wybrane pozycje do zaleceń [P] PLAN</button>
+      </div>
+    </dialog>
+    <dialog id="diagnostics-dialog" aria-labelledby="diagnostics-title" aria-describedby="diagnostics-description">
+      <header class="diagnostics-header">
+        <div>
+          <div class="diagnostics-kicker">Diagnostyka Przyłóżkowa POCUS & Panele Laboratoryjne v2.1</div>
+          <h2 id="diagnostics-title">Protokoły POCUS i Badania Laboratoryjne</h2>
+        </div>
+        <button id="diagnostics-close" aria-label="Zamknij moduł diagnostyczny">Zamknij</button>
+      </header>
+      <div class="diagnostics-tabs" role="tablist" aria-label="Wybierz protokół diagnostyczny">
+        <button id="diag-tab-efast" class="diagnostics-tab" role="tab" data-diag-tab="efast" aria-selected="true">🚨 POCUS eFAST (Urazy)</button>
+        <button id="diag-tab-blue" class="diagnostics-tab" role="tab" data-diag-tab="blue" aria-selected="false">🫁 POCUS BLUE (Płuca)</button>
+        <button id="diag-tab-focus" class="diagnostics-tab" role="tab" data-diag-tab="focus" aria-selected="false">🫀 FOCUS & DVT (Echo / Żyły)</button>
+        <button id="diag-tab-lab" class="diagnostics-tab" role="tab" data-diag-tab="lab" aria-selected="false">🧪 Panele Lab (Troponina / D-dimer / Mleczany / RKZ)</button>
+      </div>
+      <p id="diagnostics-description" class="diagnostics-description"></p>
+      <div id="diagnostics-panel" class="diagnostics-panel">
+        <!-- Rendered dynamically -->
+      </div>
+      <div class="diagnostics-footer">
+        <button id="diagnostics-add-soap-btn" class="primary">✓ Dołącz wyniki do badania przedmiotowego [O] i oceny [A]</button>
       </div>
     </dialog>
     <input
