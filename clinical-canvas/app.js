@@ -575,6 +575,7 @@
     if (pan) panToNode(id);
     draw();
     renderPanel();
+    if (walkthroughActive) renderWalkthrough();
   }
   function chooseModule(id) {
     active = id;
@@ -588,6 +589,7 @@
     draw();
     renderPanel();
     fit();
+    if (walkthroughActive) renderWalkthrough();
   }
   const SECTIONS = [
     ["criteria", "Zmienne decyzyjne i kryteria przejścia"],
@@ -674,6 +676,134 @@
       ? `<a class="source" href="${escape(url)}" target="_blank" rel="noopener noreferrer">${escape(s?.name || key)} ↗</a>`
       : `<p>${escape(key)} (nieaktywny adres)</p>`;
   }
+  function findNodeScore(n) {
+    if (!n) return null;
+    const title = (n.title || "").toLowerCase();
+    const d = n.data || {};
+    const text = [title, ...(d.red || []), ...(d.tests || []), ...(d.criteria || [])].join(" ").toLowerCase();
+    if (/wellspe|wells|zatorowoś|d-dimer/i.test(text)) return "wellspe";
+    if (/curb65|curb|zapaleni.*płuc|pozaszpitaln/i.test(text)) return "curb65";
+    if (/qsofa|seps/i.test(text)) return "qsofa";
+    if (/news2|news|wczesn.*ostrzeg/i.test(text)) return "news2";
+    if (/pews|pediatr.*wczesn/i.test(text)) return "pews";
+    if (/gcs|glasgow/i.test(text)) return "gcs";
+    return null;
+  }
+
+  function matchScoreToBranch(scoreKey, total, outgoingEdges) {
+    if (!outgoingEdges || !outgoingEdges.length) return null;
+    if (scoreKey === "wellspe") {
+      const isLikely = total > 4;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isLikely
+          ? /prawdopodobn|wysok|tkpa|angio|\btak\b|\+|>4/.test(lbl)
+          : /mało|nisk|d-dimer|dimer|\bnie\b|ujemn|perc|<=4|≤4/.test(lbl);
+      });
+    }
+    if (scoreKey === "curb65") {
+      const isHigh = total >= 2;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isHigh
+          ? /hospitaliz|ciężk|oiom|oddział|wysok|\btak\b|≥2|>=2/.test(lbl)
+          : /ambulat|dom|nisk|\bnie\b|0-1/.test(lbl);
+      });
+    }
+    if (scoreKey === "qsofa") {
+      const isSepsis = total >= 2;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isSepsis
+          ? /seps|eskalac|wysok|piln|\btak\b|≥2|>=2/.test(lbl)
+          : /nisk|stabiln|\bnie\b|<2/.test(lbl);
+      });
+    }
+    return null;
+  }
+
+  function renderInlineCalcHTML(scoreKey, n, outgoing) {
+    if (!scoreKey || !["wellspe", "curb65", "qsofa"].includes(scoreKey)) return "";
+    const calcLabels = {
+      wellspe: "Wells dla zatorowości płucnej (PE)",
+      curb65: "Skala ciężkości CURB-65",
+      qsofa: "qSOFA — szybka ocena sepsy",
+    };
+
+    const existing = visitSession.calculators.find((c) => c.key === scoreKey);
+    let itemsHTML = "";
+
+    if (scoreKey === "wellspe") {
+      const items = [
+        { id: "peMostLikely", label: "Alternatywne rozpoznanie mniej prawdopodobne niż ZP (+3.0)", pts: 3.0 },
+        { id: "dvtSigns", label: "Kliniczne objawy DVT (obrzęk, bolesność łydki) (+3.0)", pts: 3.0 },
+        { id: "hr", label: "Tachykardia: częstość serca > 100/min (+1.5)", pts: 1.5 },
+        { id: "immobilizationOrSurgery", label: "Unieruchomienie ≥3 dni lub operacja w ciągu 4 tyg (+1.5)", pts: 1.5 },
+        { id: "previousVte", label: "Przebyty udokumentowany ZP lub DVT (+1.5)", pts: 1.5 },
+        { id: "hemoptysis", label: "Krwioplucie (+1.0)", pts: 1.0 },
+        { id: "malignancy", label: "Choroba nowotworowa leczona obecnie/ostatnie 6 mies (+1.0)", pts: 1.0 },
+      ];
+      itemsHTML = items
+        .map((it) => {
+          const checked = checkedVars.has(`calc-${scoreKey}-${it.id}`);
+          return `<label class="inline-calc-item">
+            <input type="checkbox" data-calc-item="${it.id}" data-calc-key="${scoreKey}" data-calc-pts="${it.pts}" ${checked ? "checked" : ""}>
+            <span>${escape(it.label)}</span>
+          </label>`;
+        })
+        .join("");
+    } else if (scoreKey === "curb65") {
+      const items = [
+        { id: "confusion", label: "Confusion: Nowe zaburzenia świadomości (AMTS ≤ 8)", pts: 1 },
+        { id: "urea", label: "Urea: Mocznik > 7 mmol/l (BUN > 19 mg/dl)", pts: 1 },
+        { id: "rr", label: "Respiratory rate: Częstość oddechów ≥ 30/min", pts: 1 },
+        { id: "bp", label: "Blood pressure: SBP < 90 mmHg lub DBP ≤ 60 mmHg", pts: 1 },
+        { id: "age", label: "Age: Wiek pacjenta ≥ 65 lat", pts: 1 },
+      ];
+      itemsHTML = items
+        .map((it) => {
+          const checked = checkedVars.has(`calc-${scoreKey}-${it.id}`);
+          return `<label class="inline-calc-item">
+            <input type="checkbox" data-calc-item="${it.id}" data-calc-key="${scoreKey}" data-calc-pts="${it.pts}" ${checked ? "checked" : ""}>
+            <span>${escape(it.label)}</span>
+          </label>`;
+        })
+        .join("");
+    } else if (scoreKey === "qsofa") {
+      const items = [
+        { id: "rr", label: "Częstość oddechów ≥ 22/min (+1)", pts: 1 },
+        { id: "ams", label: "Zaburzenia świadomości / GCS < 15 (+1)", pts: 1 },
+        { id: "sbp", label: "Skurczowe ciśnienie krwi SBP ≤ 100 mmHg (+1)", pts: 1 },
+      ];
+      itemsHTML = items
+        .map((it) => {
+          const checked = checkedVars.has(`calc-${scoreKey}-${it.id}`);
+          return `<label class="inline-calc-item">
+            <input type="checkbox" data-calc-item="${it.id}" data-calc-key="${scoreKey}" data-calc-pts="${it.pts}" ${checked ? "checked" : ""}>
+            <span>${escape(it.label)}</span>
+          </label>`;
+        })
+        .join("");
+    }
+
+    const currentTotal = existing ? existing.total : 0;
+    const isHigh = scoreKey === "wellspe" ? currentTotal > 4 : currentTotal >= 2;
+
+    return `
+    <div class="inline-calc-box" data-calc-box="${scoreKey}">
+      <div class="inline-calc-header">
+        <span class="inline-calc-title">⚡ Szybka ocena: ${calcLabels[scoreKey]}</span>
+        <span class="inline-calc-score-badge" id="inline-score-badge-${scoreKey}" data-level="${isHigh ? "high" : "low"}">Wynik: ${currentTotal} pkt</span>
+      </div>
+      <div class="inline-calc-grid">
+        ${itemsHTML}
+      </div>
+      <button type="button" class="inline-calc-apply-btn" data-calc-apply="${scoreKey}">
+        ✓ Zastosuj wynik i dopasuj gałąź schematu
+      </button>
+    </div>`;
+  }
+
   function renderPanel() {
     if (selected?.kind === "edge") {
       renderEdgePanel();
@@ -691,10 +821,12 @@
       renderEditor(n);
       return;
     }
-    const calculator = ["gcs", "news2", "pews"].find((key) =>
+    const scoreKey = findNodeScore(n);
+    const calculator = scoreKey || ["gcs", "news2", "pews", "curb65", "qsofa", "wellspe"].find((key) =>
       n.title.toLowerCase().includes(key),
     );
     const outgoing = g.edges.filter((e) => e.from === n.id);
+    const inlineCalcHTML = scoreKey ? renderInlineCalcHTML(scoreKey, n, outgoing) : "";
 
     let decisionCompartmentHTML = "";
     if (outgoing.length > 0) {
@@ -742,6 +874,7 @@
           <span class="decision-count-badge">${outgoing.length} ${outgoing.length === 1 ? "ścieżka" : "ścieżki"}</span>
         </h3>
         <p class="compartment-subtitle">Zaznacz zmienne kliniczne obecne u pacjenta, aby podświetlić gałąź schematu i przejść do kolejnego kafelka.</p>
+        ${inlineCalcHTML}
         <div class="branch-list">
           ${branchCardsHTML}
         </div>
@@ -751,6 +884,7 @@
       <section class="decision-compartment terminal">
         <h3>Punkt końcowy schematu</h3>
         <p class="compartment-subtitle">Ten kafelek stanowi zakończenie bieżącej ścieżki decyzyjnej. Sprawdź zalecenia dyspozycyjne poniżej.</p>
+        ${inlineCalcHTML}
       </section>`;
     }
 
@@ -1867,12 +2001,391 @@
   const soapResetBtn = $("soap-reset");
   if (soapResetBtn) soapResetBtn.onclick = resetSession;
 
+  let walkthroughActive = false;
+
+  function startWalkthrough() {
+    walkthroughActive = true;
+    const overlay = $("walkthrough-overlay");
+    if (overlay) overlay.hidden = false;
+    renderWalkthrough();
+  }
+
+  function exitWalkthrough() {
+    walkthroughActive = false;
+    const overlay = $("walkthrough-overlay");
+    if (overlay) overlay.hidden = true;
+  }
+
+  function renderWalkthrough() {
+    if (!walkthroughActive) return;
+    const info = selectedInfo();
+    const g = visibleGraphs()[0];
+    if (!info || !g) return;
+    const { n } = info;
+    const d = n.data || {};
+    const nodes = g.nodes;
+    const currentIndex = nodes.findIndex((node) => node.id === n.id);
+    const totalCount = nodes.length;
+
+    const titleEl = $("wt-step-title");
+    if (titleEl) titleEl.textContent = n.title;
+    const counterEl = $("wt-step-counter");
+    if (counterEl)
+      counterEl.textContent = `Krok ${currentIndex + 1} z ${totalCount} (${TYPES[n.type].split(" / ")[0]})`;
+
+    // Timeline dots
+    const timelineEl = $("wt-timeline");
+    if (timelineEl) {
+      timelineEl.innerHTML = nodes
+        .map((node, i) => {
+          const isVisited = visitSession.history.some((h) => h.nodeId === node.id);
+          const isActive = node.id === n.id;
+          return `<div class="wt-dot ${isActive ? "active" : isVisited ? "visited" : ""}" data-wt-step="${node.id}" title="${escape(node.title)}"></div>`;
+        })
+        .join("");
+    }
+
+    // Red flag / Urgent banner
+    const alertBanner = $("wt-alert-banner");
+    const redItems = list(d.red);
+    if (alertBanner) {
+      if (n.type === "urgent" || redItems.length > 0) {
+        alertBanner.hidden = false;
+        const alertText = $("wt-alert-text");
+        if (alertText)
+          alertText.textContent =
+            redItems.join(" • ") || "Krok alarmowy: stan zagrożenia życia lub natychmiastowej interwencji.";
+      } else {
+        alertBanner.hidden = true;
+      }
+    }
+
+    const outgoing = g.edges.filter((e) => e.from === n.id);
+    const scoreKey = findNodeScore(n);
+
+    let bodyHTML = `
+      <div class="wt-card">
+        <h3><span>Postępowanie i cel kliniczny</span></h3>
+        <p style="margin: 0; line-height: 1.6; font-size: 13px;">${escape(d.body || "Brak szczegółowego opisu.")}</p>
+      </div>
+    `;
+
+    if (list(d.hx).length || list(d.exam).length) {
+      bodyHTML += `
+      <div class="wt-card">
+        <h3><span>Wywiad i badanie przedmiotowe</span></h3>
+        <ul style="margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6;">
+          ${list(d.hx).map((x) => `<li><strong>[Wywiad]:</strong> ${escape(x)}</li>`).join("")}
+          ${list(d.exam).map((x) => `<li><strong>[Badanie]:</strong> ${escape(x)}</li>`).join("")}
+        </ul>
+      </div>`;
+    }
+
+    if (scoreKey) {
+      bodyHTML += `
+      <div class="wt-card">
+        <h3><span>Kalkulator decyzyjny powiązany z krokiem</span></h3>
+        ${renderInlineCalcHTML(scoreKey, n, outgoing)}
+      </div>`;
+    }
+
+    if (outgoing.length > 0) {
+      bodyHTML += `
+      <div class="wt-card">
+        <h3><span>Ścieżki decyzyjne i wybór gałęzi</span></h3>
+        <div class="branch-list">
+          ${outgoing.map((e) => {
+            const target = g.nodes.find((tn) => tn.id === e.to);
+            if (!target) return "";
+            const isBranchActive = activeBranch === e.id;
+            const vars = branchVariables(n, e, target);
+            return `
+            <div class="branch-card ${isBranchActive ? "active-branch-card" : ""}" data-edge-id="${escape(e.id)}">
+              <div class="branch-header">
+                <span class="branch-badge">${escape(e.label || "Dalej")}</span>
+                <span class="branch-match-count">${vars.length} kryteriów</span>
+              </div>
+              <div class="branch-criteria-list">
+                ${vars.map((v, idx) => {
+                  const varKey = `${e.id}-${idx}`;
+                  const isChecked = checkedVars.has(varKey);
+                  return `
+                  <label class="criterion-check ${isChecked ? "checked" : ""}">
+                    <input type="checkbox" data-var="${escape(varKey)}" data-edge="${escape(e.id)}" ${isChecked ? "checked" : ""}>
+                    <span>${escape(v)}</span>
+                  </label>`;
+                }).join("")}
+              </div>
+              <button type="button" class="branch-jump-btn" data-jump-node="${escape(target.id)}" data-branch-edge="${escape(e.id)}">
+                Przejdź do: <strong>${escape(target.title)}</strong> ➔
+              </button>
+            </div>`;
+          }).join("")}
+        </div>
+      </div>`;
+    }
+
+    if (list(d.dispo).length || d.logic) {
+      bodyHTML += `
+      <div class="wt-card">
+        <h3><span>Dalsza dyspozycja i uzasadnienie</span></h3>
+        ${list(d.dispo).map((disp) => `<p style="margin: 4px 0; font-size: 12.5px;">• ${escape(disp)}</p>`).join("")}
+        ${d.logic ? `<p style="margin: 8px 0 0; font-size: 11.5px; color: var(--muted); font-style: italic;">Dlaczego tak: ${escape(d.logic)}</p>` : ""}
+      </div>`;
+    }
+
+    const mainBody = $("wt-main-body");
+    if (mainBody) mainBody.innerHTML = bodyHTML;
+
+    const prevBtn = $("wt-prev");
+    if (prevBtn) prevBtn.disabled = currentIndex <= 0;
+
+    const nextBtn = $("wt-next");
+    if (nextBtn) {
+      const activeEdge = outgoing.find((e) => e.id === activeBranch);
+      const nextTargetId = activeEdge
+        ? activeEdge.to
+        : outgoing[0]
+          ? outgoing[0].to
+          : nodes[currentIndex + 1]
+            ? nodes[currentIndex + 1].id
+            : null;
+
+      nextBtn.disabled = !nextTargetId;
+      if (nextTargetId) {
+        const nextNode = g.nodes.find((tn) => tn.id === nextTargetId);
+        nextBtn.textContent = nextNode ? `Kolejny: ${nextNode.title.slice(0, 16)}… ➔` : "Kolejny krok ➔";
+        nextBtn.dataset.nextId = nextTargetId;
+      } else {
+        nextBtn.textContent = "Punkt końcowy ✓";
+      }
+    }
+  }
+
+  function printPDFDossier() {
+    const container = $("dossier-print-container");
+    if (!container) return;
+    const g = currentGraph() || visibleGraphs()[0];
+    const m = D.modules.find((mod) => mod.id === active) || {
+      name: g?.title || "Konsultacja",
+    };
+    const cohortLabel =
+      cohort === "a"
+        ? "DOROŚLI (≥16 lat)"
+        : cohort === "p"
+          ? "DZIECI (<16 lat)"
+          : "OGÓLNA";
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")} ${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    container.innerHTML = `
+    <div class="dossier-sheet">
+      <div class="dossier-header">
+        <div>
+          <h1>Clinical Canvas · Karta Konsultacji Klinicznej i Decyzji</h1>
+          <div class="dossier-meta">
+            <strong>Algorytm:</strong> ${escape(m.name)} &nbsp;|&nbsp; <strong>Populacja:</strong> ${escape(cohortLabel)} &nbsp;|&nbsp; <strong>Data oceny:</strong> ${dateStr}
+          </div>
+        </div>
+        <div class="dossier-meta" style="text-align: right;">
+          Standard: <b>Clinical Canvas v2.1</b><br>
+          Ref: CC-${Date.now().toString(36).toUpperCase()}
+        </div>
+      </div>
+
+      <section class="dossier-section">
+        <h2>1. Ścieżka Decyzyjna i Punkty Zwrotne (Audit Trail)</h2>
+        <div class="dossier-audit-list">
+          ${visitSession.history.length === 0 ? "<p>Brak zarejestrowanych etapów w bieżącej sesji.</p>" : visitSession.history.map((step, idx) => `
+            <div class="dossier-audit-step">
+              <strong>Etap ${idx + 1}: ${escape(step.title)}</strong> [${step.type}]
+              ${step.criteria && step.criteria.length ? `<br><span style="color:#444">Zaznaczone kryteria: ${escape(step.criteria.join(", "))}</span>` : ""}
+              ${step.branchTaken ? `<br><strong style="color:#164c4b">➔ Wybrana gałąź: "${escape(step.branchTaken)}"</strong>` : ""}
+            </div>
+          `).join("")}
+        </div>
+      </section>
+
+      ${visitSession.calculators.length > 0 ? `
+        <section class="dossier-section">
+          <h2>2. Skale Kliniczne i Zastosowane Kalkulatory</h2>
+          <table class="dossier-table">
+            <thead>
+              <tr>
+                <th>Skala</th>
+                <th>Wynik</th>
+                <th>Stratyfikacja i Znaczenie Kliniczne</th>
+                <th>Zalecenie</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${visitSession.calculators.map((c) => `
+                <tr>
+                  <td><strong>${escape(c.name)}</strong></td>
+                  <td><b>${c.total != null ? c.total : "NT"}${c.max ? " / " + c.max : ""} pkt</b></td>
+                  <td>${escape(c.headline)}</td>
+                  <td>${escape(c.action || "—")}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </section>
+      ` : ""}
+
+      <section class="dossier-section">
+        <h2>3. Ustrukturyzowana Notatka Kliniczna (Format SOAP)</h2>
+        <div style="font-size: 9pt; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #f8fbfb; border: 1pt solid #ccc; padding: 10pt; border-radius: 4pt; line-height: 1.5;">${escape(generateSOAPReport())}</div>
+      </section>
+
+      <div class="dossier-signatures">
+        <div class="dossier-signature-box">
+          Data badania: ${dateStr}<br>
+          Pieczęć i podpis lekarza prowadzącego / kwalifikującego
+        </div>
+        <div class="dossier-signature-box">
+          Stanowisko Triage / Oddział docelowy<br>
+          Potwierdzenie przekazania / hospitalizacji
+        </div>
+      </div>
+    </div>`;
+
+    window.print();
+  }
+
+  // Walkthrough and Dossier button listeners
+  const wtBtn = $("walkthrough-btn");
+  if (wtBtn) wtBtn.onclick = startWalkthrough;
+  const wtCloseBtn = $("wt-close");
+  if (wtCloseBtn) wtCloseBtn.onclick = exitWalkthrough;
+  const wtSoapBtn = $("wt-soap-btn");
+  if (wtSoapBtn) wtSoapBtn.onclick = openSOAPDialog;
+  const wtPdfBtn = $("wt-pdf-btn");
+  if (wtPdfBtn) wtPdfBtn.onclick = printPDFDossier;
+  const dossierBtn = $("dossier-btn");
+  if (dossierBtn) dossierBtn.onclick = printPDFDossier;
+  const soapDossierBtn = $("soap-dossier-btn");
+  if (soapDossierBtn) soapDossierBtn.onclick = printPDFDossier;
+
+  const wtPrevBtn = $("wt-prev");
+  if (wtPrevBtn)
+    wtPrevBtn.onclick = () => {
+      const g = visibleGraphs()[0];
+      if (!g) return;
+      const info = selectedInfo();
+      const idx = g.nodes.findIndex((node) => node.id === info?.n.id);
+      if (idx > 0) selectNode(g.nodes[idx - 1].id, true);
+    };
+
+  const wtNextBtn = $("wt-next");
+  if (wtNextBtn)
+    wtNextBtn.onclick = () => {
+      const nextId = $("wt-next").dataset.nextId;
+      if (nextId) selectNode(nextId, true);
+    };
+
+  const wtTimeline = $("wt-timeline");
+  if (wtTimeline)
+    wtTimeline.onclick = (ev) => {
+      const dot = ev.target.closest("[data-wt-step]");
+      if (dot) selectNode(dot.dataset.wtStep, true);
+    };
+
+  // Inline calculator change handling
+  document.addEventListener("change", (ev) => {
+    const calcInput = ev.target.closest("[data-calc-item]");
+    if (calcInput) {
+      const box = calcInput.closest("[data-calc-box]");
+      if (!box) return;
+      const scoreKey = calcInput.dataset.calcKey;
+      const varKey = `calc-${scoreKey}-${calcInput.dataset.calcItem}`;
+      if (calcInput.checked) checkedVars.add(varKey);
+      else checkedVars.delete(varKey);
+
+      const checkedInputs = box.querySelectorAll("input[data-calc-item]:checked");
+      let total = 0;
+      checkedInputs.forEach((ci) => {
+        total += parseFloat(ci.dataset.calcPts || 0);
+      });
+
+      const badge = $(`inline-score-badge-${scoreKey}`);
+      if (badge) {
+        badge.textContent = `Wynik: ${total} pkt`;
+        const isHigh = scoreKey === "wellspe" ? total > 4 : total >= 2;
+        badge.dataset.level = isHigh ? "high" : "low";
+      }
+
+      const calcData = {
+        key: scoreKey,
+        name: scoreKey === "wellspe" ? "Wells PE" : scoreKey === "curb65" ? "CURB-65" : "qSOFA",
+        total: total,
+        max: scoreKey === "wellspe" ? "12.5" : scoreKey === "curb65" ? "5" : "3",
+        headline:
+          scoreKey === "wellspe"
+            ? total > 4
+              ? "Wysokie prawdopodobieństwo ZP (>4 pkt) — wskazana TKPA"
+              : "Małe prawdopodobieństwo ZP (≤4 pkt) — oznacz D-dimer"
+            : scoreKey === "curb65"
+              ? total >= 2
+                ? "Wskazana hospitalizacja (Grupa 2/3)"
+                : "Niskie ryzyko zgonu (Grupa 1)"
+              : total >= 2
+                ? "Wysokie ryzyko sepsy (≥2 pkt)"
+                : "Niskie ryzyko (<2 pkt)",
+        action:
+          scoreKey === "wellspe"
+            ? total > 4
+              ? "Wykonaj angio-TK klatki piersiowej (TKPA)"
+              : "Oznacz D-dimer; jeśli ujemny, wyklucz ZP"
+            : "",
+        timestamp: Date.now(),
+      };
+      const exIdx = visitSession.calculators.findIndex((c) => c.key === scoreKey);
+      if (exIdx >= 0) visitSession.calculators[exIdx] = calcData;
+      else visitSession.calculators.push(calcData);
+      updateSOAPBadge();
+
+      const g = visibleGraphs()[0];
+      const outgoing = g ? g.edges.filter((e) => e.from === selected?.id) : [];
+      const matched = matchScoreToBranch(scoreKey, total, outgoing);
+      if (matched) activeBranch = matched.id;
+      draw();
+      renderPanel();
+      if (walkthroughActive) renderWalkthrough();
+    }
+  });
+
+  document.addEventListener("click", (ev) => {
+    const applyBtn = ev.target.closest("[data-calc-apply]");
+    if (applyBtn) {
+      const scoreKey = applyBtn.dataset.calcApply;
+      const existing = visitSession.calculators.find((c) => c.key === scoreKey);
+      const total = existing ? existing.total : 0;
+      const g = visibleGraphs()[0];
+      const outgoing = g ? g.edges.filter((e) => e.from === selected?.id) : [];
+      const matched = matchScoreToBranch(scoreKey, total, outgoing);
+      if (matched) {
+        activeBranch = matched.id;
+        toast(`Dopasowano gałąź: ${matched.label || "Kolejny krok"}`);
+      } else {
+        toast(`Zastosowano wynik ${total} pkt.`);
+      }
+      draw();
+      renderPanel();
+      if (walkthroughActive) renderWalkthrough();
+    }
+  });
+
   window.ClinicalVisit = {
     session: visitSession,
     recordStep,
     generateSOAPReport,
     resetSession,
     updateSOAPBadge,
+    startWalkthrough,
+    exitWalkthrough,
+    printPDFDossier,
+    matchScoreToBranch,
+    findNodeScore,
   };
 
   window.addEventListener("pagehide", () => {

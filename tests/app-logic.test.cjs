@@ -693,3 +693,121 @@ test("visit session & SOAP report: generates complete medical summary and audit 
   assert.ok(report.includes('3. [outcome] Dyspozycja i dalsza obserwacja'));
 });
 
+test("score-to-branch & inline calculator: matches risk score boundaries to outgoing branches", () => {
+  function matchScoreToBranch(scoreKey, total, outgoingEdges) {
+    if (!outgoingEdges || !outgoingEdges.length) return null;
+    if (scoreKey === "wellspe") {
+      const isLikely = total > 4;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isLikely
+          ? /prawdopodobn|wysok|tkpa|angio|tak|\+|>4/.test(lbl)
+          : /mało|nisk|d-dimer|dimer|nie|ujemn|perc|<=4|≤4/.test(lbl);
+      });
+    }
+    if (scoreKey === "curb65") {
+      const isHigh = total >= 2;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isHigh
+          ? /hospitaliz|ciężk|oiom|oddział|wysok|tak|≥2|>=2/.test(lbl)
+          : /ambulat|dom|nisk|nie|0-1/.test(lbl);
+      });
+    }
+    if (scoreKey === "qsofa") {
+      const isSepsis = total >= 2;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isSepsis
+          ? /seps|eskalac|wysok|piln|\btak\b|≥2|>=2/.test(lbl)
+          : /nisk|stabiln|\bnie\b|<2/.test(lbl);
+      });
+    }
+    return null;
+  }
+
+  function findNodeScore(n) {
+    if (!n) return null;
+    const title = (n.title || "").toLowerCase();
+    const d = n.data || {};
+    const text = [title, ...(d.red || []), ...(d.tests || []), ...(d.criteria || [])].join(" ").toLowerCase();
+    if (/wellspe|wells|zatorowoś|d-dimer/i.test(text)) return "wellspe";
+    if (/curb65|curb|zapaleni.*płuc|pozaszpitaln/i.test(text)) return "curb65";
+    if (/qsofa|seps/i.test(text)) return "qsofa";
+    if (/news2|news|wczesn.*ostrzeg/i.test(text)) return "news2";
+    if (/pews|pediatr.*wczesn/i.test(text)) return "pews";
+    if (/gcs|glasgow/i.test(text)) return "gcs";
+    return null;
+  }
+
+  // Wells PE branches test
+  const wellsBranches = [
+    { id: "e-ctpa", label: "Prawdopodobny ZP ➔ TKPA" },
+    { id: "e-ddimer", label: "Mało prawdopodobny ➔ D-dimer" },
+  ];
+  assert.equal(matchScoreToBranch("wellspe", 6.0, wellsBranches).id, "e-ctpa");
+  assert.equal(matchScoreToBranch("wellspe", 4.0, wellsBranches).id, "e-ddimer");
+  assert.equal(matchScoreToBranch("wellspe", 1.5, wellsBranches).id, "e-ddimer");
+
+  // CURB-65 branches test
+  const curbBranches = [
+    { id: "e-hosp", label: "Hospitalizacja (Grupa 2/3)" },
+    { id: "e-home", label: "Leczenie ambulatoryjne" },
+  ];
+  assert.equal(matchScoreToBranch("curb65", 3, curbBranches).id, "e-hosp");
+  assert.equal(matchScoreToBranch("curb65", 2, curbBranches).id, "e-hosp");
+  assert.equal(matchScoreToBranch("curb65", 0, curbBranches).id, "e-home");
+
+  // qSOFA branches test
+  const qsofaBranches = [
+    { id: "e-sepsis", label: "Podejrzenie sepsy / eskalacja" },
+    { id: "e-stable", label: "Niskie ryzyko" },
+  ];
+  assert.equal(matchScoreToBranch("qsofa", 2, qsofaBranches).id, "e-sepsis");
+  assert.equal(matchScoreToBranch("qsofa", 1, qsofaBranches).id, "e-stable");
+
+  // Node detection test
+  assert.equal(findNodeScore({ title: "Ocena prawdopodobieństwa Wells dla ZP" }), "wellspe");
+  assert.equal(findNodeScore({ title: "Pozaszpitalne zapalenie płuc — ocena CURB" }), "curb65");
+  assert.equal(findNodeScore({ title: "Triage gorączki i screening sepsy qSOFA" }), "qsofa");
+});
+
+test("PDF dossier generator: formats printable dossier with header, audit, calculators, and SOAP", () => {
+  function generateDossierHTML(session, moduleName, cohortLabel, dateStr, soapText) {
+    return `
+    <div class="dossier-sheet">
+      <div class="dossier-header">
+        <h1>Clinical Canvas · Karta Konsultacji Klinicznej i Decyzji</h1>
+        <div class="dossier-meta">${moduleName} | ${cohortLabel} | ${dateStr}</div>
+      </div>
+      <section class="dossier-section">
+        <h2>1. Ścieżka Decyzyjna i Punkty Zwrotne (Audit Trail)</h2>
+        ${session.history.map((s, i) => `<div>${i + 1}. ${s.title} [${s.branchTaken || ""}]</div>`).join("")}
+      </section>
+      <section class="dossier-section">
+        <h2>2. Skale Kliniczne</h2>
+        ${session.calculators.map((c) => `<div>${c.name}: ${c.total} pkt</div>`).join("")}
+      </section>
+      <section class="dossier-section">
+        <h2>3. Ustrukturyzowana Notatka Kliniczna (SOAP)</h2>
+        <pre>${soapText}</pre>
+      </section>
+    </div>`;
+  }
+
+  const session = {
+    history: [
+      { title: "Triage", branchTaken: "Stabilny" },
+      { title: "Wells PE", branchTaken: "TKPA" },
+    ],
+    calculators: [{ name: "Wells PE", total: 6.0 }],
+  };
+
+  const html = generateDossierHTML(session, "Klatka piersiowa", "DOROŚLI", "2026-11-05 14:00", "[S] Wywiad...");
+  assert.ok(html.includes("Karta Konsultacji Klinicznej"));
+  assert.ok(html.includes("Wells PE [TKPA]"));
+  assert.ok(html.includes("Wells PE: 6 pkt"));
+  assert.ok(html.includes("[S] Wywiad..."));
+});
+
+

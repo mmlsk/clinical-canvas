@@ -25,8 +25,10 @@
         ><span>Atlas decyzji klinicznych <b>v2.1</b></span>
       </div>
       <div class="top-actions">
-        <button id="calculators" class="primary">Kalkulatory</button>
+        <button id="walkthrough-btn" class="primary">🚀 Tryb dyżurowy</button>
+        <button id="calculators">Kalkulatory</button>
         <button id="soap-report">📋 Raport SOAP <span id="soap-badge" class="badge">0</span></button>
+        <button id="dossier-btn">📄 PDF Dossier</button>
         <button id="theme" aria-label="Zmień motyw">Motyw</button>
         <button id="sources">Źródła</button>
         <button id="export">Eksport</button>
@@ -170,12 +172,40 @@
         <div class="soap-actions-left">
           <button id="soap-copy" class="primary">📋 Kopiuj do schowka</button>
           <button id="soap-download">💾 Pobierz (.txt)</button>
+          <button id="soap-dossier-btn">📄 Drukuj / PDF Dossier</button>
         </div>
         <div class="soap-actions-right">
           <button id="soap-reset" class="danger-btn">🗑️ Nowy pacjent / Wyczyść</button>
         </div>
       </div>
     </dialog>
+    <div id="walkthrough-overlay" class="walkthrough-container" hidden>
+      <header class="walkthrough-header">
+        <div class="walkthrough-title-area">
+          <span class="walkthrough-badge">TRYB DYŻUROWY · PROWADŹ PRZYPADEK</span>
+          <h2 id="wt-step-title">Krok algorytmu</h2>
+        </div>
+        <div class="walkthrough-top-controls">
+          <button id="wt-pdf-btn">📄 PDF Dossier</button>
+          <button id="wt-soap-btn">📋 Raport SOAP</button>
+          <button id="wt-close" aria-label="Zakończ tryb dyżurowy">✕ Wyjdź</button>
+        </div>
+      </header>
+      <div id="wt-timeline" class="walkthrough-timeline"></div>
+      <div id="wt-alert-banner" class="walkthrough-alert" hidden>
+        <strong>⚠️ PUNKTY KRYTYCZNE / CZERWONE FLAGI:</strong>
+        <span id="wt-alert-text"></span>
+      </div>
+      <div class="walkthrough-content">
+        <div id="wt-main-body" class="walkthrough-main"></div>
+      </div>
+      <footer class="walkthrough-footer">
+        <button id="wt-prev" class="wt-btn-nav">◀ Poprzedni krok</button>
+        <div id="wt-step-counter" class="wt-counter">Krok 1 z 7</div>
+        <button id="wt-next" class="wt-btn-nav primary">Kolejny krok ➔</button>
+      </footer>
+    </div>
+    <div id="dossier-print-container" class="print-only"></div>
     <dialog id="calc-dialog" aria-labelledby="calc-title" aria-describedby="calc-description">
       <header class="calc-header">
         <div><div class="calc-kicker">Narzędzia oceny · v2.1</div><h2 id="calc-title">Kalkulatory kliniczne</h2></div>
