@@ -9,6 +9,9 @@
     />
     <meta name="theme-color" content="#164c4b" />
     <title>Clinical Canvas · Algorytmy objawowe</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
     <script defer src="clinical-data.js"></script>
     <script>window.__API_BASE__ = "__PORT_8765__";</script>
@@ -28,13 +31,13 @@
         ><span>Atlas decyzji klinicznych <b>v2.1</b></span>
       </div>
       <div class="top-actions">
-        <button id="walkthrough-btn" class="primary">🚀 Tryb dyżurowy</button>
+        <button id="walkthrough-btn" class="primary">Tryb dyżurowy</button>
         <button id="calculators">Kalkulatory</button>
-        <button id="pharm-btn">💊 Leki & Płyny</button>
-        <button id="diagnostics-btn">🔬 POCUS & Lab</button>
-        <button id="safety-btn" class="safety-badge-btn" title="Audyt bezpieczeństwa lekowego i interakcji">🛡️ Bezpieczeństwo <span id="safety-badge" class="badge">0</span></button>
-        <button id="soap-report">📋 Raport SOAP <span id="soap-badge" class="badge">0</span></button>
-        <button id="dossier-btn">📄 PDF Dossier</button>
+        <button id="pharm-btn">Leki & Płyny</button>
+        <button id="diagnostics-btn">POCUS & Lab</button>
+        <button id="safety-btn" class="safety-badge-btn" title="Audyt bezpieczeństwa lekowego i interakcji">Bezpieczeństwo <span id="safety-badge" class="badge">0</span></button>
+        <button id="soap-report">Raport SOAP <span id="soap-badge" class="badge">0</span></button>
+        <button id="dossier-btn">PDF Dossier</button>
         <button id="theme" aria-label="Zmień motyw">Motyw</button>
         <button id="sources">Źródła</button>
         <button id="export">Eksport</button>
@@ -66,7 +69,7 @@
       </aside>
       <main class="main">
         <section class="heading">
-          <div class="eyebrow" id="chapter"></div>
+          <div class="stage-meta" id="chapter"></div>
           <h1 id="title">Algorytmy diagnostyczne</h1>
           <p id="subtitle">Ładowanie biblioteki…</p>
           <div class="scope-note">
@@ -163,7 +166,7 @@
     <dialog id="soap-dialog" aria-labelledby="soap-title">
       <header class="soap-header">
         <div>
-          <div class="soap-kicker">Dokumentacja kliniczna · SOAP / EMR</div>
+          <div class="soap-meta">Dokumentacja kliniczna · SOAP / EMR</div>
           <h2 id="soap-title">Raport ścieżki pacjenta</h2>
         </div>
         <button id="soap-close" aria-label="Zamknij raport">Zamknij</button>
@@ -176,12 +179,12 @@
       </div>
       <div class="soap-actions">
         <div class="soap-actions-left">
-          <button id="soap-copy" class="primary">📋 Kopiuj do schowka</button>
-          <button id="soap-download">💾 Pobierz (.txt)</button>
-          <button id="soap-dossier-btn">📄 Drukuj / PDF Dossier</button>
+          <button id="soap-copy" class="primary">Kopiuj do schowka</button>
+          <button id="soap-download">Pobierz (.txt)</button>
+          <button id="soap-dossier-btn">Drukuj / PDF Dossier</button>
         </div>
         <div class="soap-actions-right">
-          <button id="soap-reset" class="danger-btn">🗑️ Nowy pacjent / Wyczyść</button>
+          <button id="soap-reset" class="danger-btn">Nowy pacjent / Wyczyść</button>
         </div>
       </div>
     </dialog>
@@ -192,32 +195,32 @@
           <h2 id="wt-step-title">Krok algorytmu</h2>
         </div>
         <div class="walkthrough-top-controls">
-          <button id="wt-safety-btn">🛡️ Bezpieczeństwo</button>
-          <button id="wt-diagnostics-btn">🔬 POCUS & Lab</button>
-          <button id="wt-pharm-btn">💊 Leki & Płyny</button>
-          <button id="wt-pdf-btn">📄 PDF Dossier</button>
-          <button id="wt-soap-btn">📋 Raport SOAP</button>
-          <button id="wt-close" aria-label="Zakończ tryb dyżurowy">✕ Wyjdź</button>
+          <button id="wt-safety-btn">Bezpieczeństwo</button>
+          <button id="wt-diagnostics-btn">POCUS & Lab</button>
+          <button id="wt-pharm-btn">Leki & Płyny</button>
+          <button id="wt-pdf-btn">PDF Dossier</button>
+          <button id="wt-soap-btn">Raport SOAP</button>
+          <button id="wt-close" aria-label="Zakończ tryb dyżurowy">Wyjdź</button>
         </div>
       </header>
       <div id="wt-timeline" class="walkthrough-timeline"></div>
       <div id="wt-alert-banner" class="walkthrough-alert" hidden>
-        <strong>⚠️ PUNKTY KRYTYCZNE / CZERWONE FLAGI:</strong>
+        <strong>PUNKTY KRYTYCZNE / CZERWONE FLAGI:</strong>
         <span id="wt-alert-text"></span>
       </div>
       <div class="walkthrough-content">
         <div id="wt-main-body" class="walkthrough-main"></div>
       </div>
       <footer class="walkthrough-footer">
-        <button id="wt-prev" class="wt-btn-nav">◀ Poprzedni krok</button>
+        <button id="wt-prev" class="wt-btn-nav">Poprzedni krok</button>
         <div id="wt-step-counter" class="wt-counter">Krok 1 z 7</div>
-        <button id="wt-next" class="wt-btn-nav primary">Kolejny krok ➔</button>
+        <button id="wt-next" class="wt-btn-nav primary">Kolejny krok →</button>
       </footer>
     </div>
     <div id="dossier-print-container" class="print-only"></div>
     <dialog id="calc-dialog" aria-labelledby="calc-title" aria-describedby="calc-description">
       <header class="calc-header">
-        <div><div class="calc-kicker">Narzędzia oceny · v2.1</div><h2 id="calc-title">Kalkulatory kliniczne</h2></div>
+        <div><div class="calc-meta">Narzędzia oceny · v2.1</div><h2 id="calc-title">Kalkulatory kliniczne</h2></div>
         <button id="calc-close" aria-label="Zamknij kalkulatory">Zamknij</button>
       </header>
       <div class="calc-tabs" role="tablist" aria-label="Wybierz skalę">
@@ -232,7 +235,7 @@
       <div id="calc-panel" role="tabpanel" aria-labelledby="calc-tab-gcs" class="calc-layout">
         <form id="calc-form" aria-label="Parametry kalkulatora" novalidate></form>
         <aside id="calc-result" class="calc-result" aria-label="Wynik i interpretacja">
-          <div id="calc-result-name" class="calc-kicker"></div>
+          <div id="calc-result-name" class="calc-meta"></div>
           <div class="calc-number"><output id="calc-value">—</output><span id="calc-max"></span></div>
           <h3 id="calc-verdict">Uzupełnij ocenę</h3>
           <div id="calc-output"></div>
@@ -246,7 +249,7 @@
     <dialog id="pharm-dialog" aria-labelledby="pharm-title" aria-describedby="pharm-description">
       <header class="pharm-header">
         <div>
-          <div class="pharm-kicker">Farmakoterapia, Płynoterapia & Wytyczne NPOA v2.1</div>
+          <div class="pharm-meta">Farmakoterapia, Płynoterapia & Wytyczne NPOA v2.1</div>
           <h2 id="pharm-title">Leksykon leków i kalkulatory dawek</h2>
         </div>
         <button id="pharm-close" aria-label="Zamknij leksykon leków">Zamknij</button>
@@ -266,45 +269,45 @@
         <span id="pharm-pop-badge" class="pharm-pop-badge">DOROSŁY (≥40 kg)</span>
       </div>
       <div class="pharm-tabs" role="tablist" aria-label="Wybierz dział farmakoterapii">
-        <button id="pharm-tab-rko" class="pharm-tab" role="tab" data-pharm-tab="rko" aria-selected="true">⚡ Stany nagłe & RKO</button>
-        <button id="pharm-tab-fluids" class="pharm-tab" role="tab" data-pharm-tab="fluids" aria-selected="false">💧 Płyny & Elektrolity/RKZ</button>
-        <button id="pharm-tab-pain" class="pharm-tab" role="tab" data-pharm-tab="pain" aria-selected="false">💊 Ból & Opioidy</button>
-        <button id="pharm-tab-npoa" class="pharm-tab" role="tab" data-pharm-tab="npoa" aria-selected="false">🛡️ Antybiotykoterapia NPOA</button>
+        <button id="pharm-tab-rko" class="pharm-tab" role="tab" data-pharm-tab="rko" aria-selected="true">Stany nagłe & RKO</button>
+        <button id="pharm-tab-fluids" class="pharm-tab" role="tab" data-pharm-tab="fluids" aria-selected="false">Płyny & Elektrolity/RKZ</button>
+        <button id="pharm-tab-pain" class="pharm-tab" role="tab" data-pharm-tab="pain" aria-selected="false">Ból & Opioidy</button>
+        <button id="pharm-tab-npoa" class="pharm-tab" role="tab" data-pharm-tab="npoa" aria-selected="false">Antybiotykoterapia NPOA</button>
       </div>
       <p id="pharm-description" class="pharm-description"></p>
       <div id="pharm-panel" class="pharm-panel">
         <!-- Rendered dynamically -->
       </div>
       <div class="pharm-footer">
-        <button id="pharm-add-plan-btn" class="primary">✓ Dołącz wybrane pozycje do zaleceń [P] PLAN</button>
+        <button id="pharm-add-plan-btn" class="primary">Dołącz wybrane pozycje do zaleceń [P] PLAN</button>
       </div>
     </dialog>
     <dialog id="diagnostics-dialog" aria-labelledby="diagnostics-title" aria-describedby="diagnostics-description">
       <header class="diagnostics-header">
         <div>
-          <div class="diagnostics-kicker">Diagnostyka Przyłóżkowa POCUS & Panele Laboratoryjne v2.1</div>
+          <div class="diagnostics-meta">Diagnostyka Przyłóżkowa POCUS & Panele Laboratoryjne v2.1</div>
           <h2 id="diagnostics-title">Protokoły POCUS i Badania Laboratoryjne</h2>
         </div>
         <button id="diagnostics-close" aria-label="Zamknij moduł diagnostyczny">Zamknij</button>
       </header>
       <div class="diagnostics-tabs" role="tablist" aria-label="Wybierz protokół diagnostyczny">
-        <button id="diag-tab-efast" class="diagnostics-tab" role="tab" data-diag-tab="efast" aria-selected="true">🚨 POCUS eFAST (Urazy)</button>
-        <button id="diag-tab-blue" class="diagnostics-tab" role="tab" data-diag-tab="blue" aria-selected="false">🫁 POCUS BLUE (Płuca)</button>
-        <button id="diag-tab-focus" class="diagnostics-tab" role="tab" data-diag-tab="focus" aria-selected="false">🫀 FOCUS & DVT (Echo / Żyły)</button>
-        <button id="diag-tab-lab" class="diagnostics-tab" role="tab" data-diag-tab="lab" aria-selected="false">🧪 Panele Lab (Troponina / D-dimer / Mleczany / RKZ)</button>
+        <button id="diag-tab-efast" class="diagnostics-tab" role="tab" data-diag-tab="efast" aria-selected="true">POCUS eFAST (Urazy)</button>
+        <button id="diag-tab-blue" class="diagnostics-tab" role="tab" data-diag-tab="blue" aria-selected="false">POCUS BLUE (Płuca)</button>
+        <button id="diag-tab-focus" class="diagnostics-tab" role="tab" data-diag-tab="focus" aria-selected="false">FOCUS & DVT (Echo / Żyły)</button>
+        <button id="diag-tab-lab" class="diagnostics-tab" role="tab" data-diag-tab="lab" aria-selected="false">Panele Lab (Troponina / D-dimer / Mleczany / RKZ)</button>
       </div>
       <p id="diagnostics-description" class="diagnostics-description"></p>
       <div id="diagnostics-panel" class="diagnostics-panel">
         <!-- Rendered dynamically -->
       </div>
       <div class="diagnostics-footer">
-        <button id="diagnostics-add-soap-btn" class="primary">✓ Dołącz wyniki do badania przedmiotowego [O] i oceny [A]</button>
+        <button id="diagnostics-add-soap-btn" class="primary">Dołącz wyniki do badania przedmiotowego [O] i oceny [A]</button>
       </div>
     </dialog>
     <dialog id="safety-dialog" aria-labelledby="safety-title" aria-describedby="safety-description">
       <header class="safety-header">
         <div>
-          <div class="safety-kicker">Wspomaganie Decyzji Klinicznych · Bezpieczeństwo Lekowe & CDS v2.1</div>
+          <div class="safety-meta">Wspomaganie Decyzji Klinicznych · Bezpieczeństwo Lekowe & CDS v2.1</div>
           <h2 id="safety-title">Audyt Bezpieczeństwa i Interakcji Lekowych</h2>
         </div>
         <button id="safety-close" aria-label="Zamknij audyt bezpieczeństwa">Zamknij</button>
@@ -364,7 +367,7 @@
             <textarea id="safety-override-reason" placeholder="Wpisz uzasadnienie decyzji klinicznej (np. 'Korzyść z opanowania wstrząsu przewyższa ryzyko; wdrożono ścisłe monitorowanie...')" rows="2"></textarea>
             <div style="margin-top: 8px; display: flex; gap: 8px;">
               <button type="button" id="safety-override-btn" class="primary">Zatwierdź odstępstwo (Override)</button>
-              <button type="button" id="safety-view-soap-btn">Przejdź do raportu SOAP ➔</button>
+              <button type="button" id="safety-view-soap-btn">Przejdź do raportu SOAP →</button>
             </div>
           </div>
         </section>

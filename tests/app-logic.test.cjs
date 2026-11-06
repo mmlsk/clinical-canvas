@@ -590,7 +590,7 @@ test("visit session & SOAP report: generates complete medical summary and audit 
           lines.push(`   └─ Zaznaczone zmienne: ${step.criteria.join(", ")}`);
         }
         if (step.branchTaken) {
-          lines.push(`   └─ Wybrana gałąź przejścia: "${step.branchTaken}" ➔`);
+          lines.push(`   └─ Wybrana gałąź przejścia: "${step.branchTaken}" →`);
         }
       });
       lines.push("================================================================================");
@@ -693,9 +693,9 @@ test("visit session & SOAP report: generates complete medical summary and audit 
 
   // Assert audit trail reflects sequence and branch transitions
   assert.ok(report.includes('1. [assessment] Ból w klatce piersiowej — triage'));
-  assert.ok(report.includes('└─ Wybrana gałąź przejścia: "Brak wstrząsu" ➔'));
+  assert.ok(report.includes('└─ Wybrana gałąź przejścia: "Brak wstrząsu" →'));
   assert.ok(report.includes('2. [decision] Weryfikacja czerwonych flag ACS / PE / Aorta'));
-  assert.ok(report.includes('└─ Wybrana gałąź przejścia: "EKG bez uniesienia ST" ➔'));
+  assert.ok(report.includes('└─ Wybrana gałąź przejścia: "EKG bez uniesienia ST" →'));
   assert.ok(report.includes('3. [outcome] Dyspozycja i dalsza obserwacja'));
 });
 
@@ -748,8 +748,8 @@ test("score-to-branch & inline calculator: matches risk score boundaries to outg
 
   // Wells PE branches test
   const wellsBranches = [
-    { id: "e-ctpa", label: "Prawdopodobny ZP ➔ TKPA" },
-    { id: "e-ddimer", label: "Mało prawdopodobny ➔ D-dimer" },
+    { id: "e-ctpa", label: "Prawdopodobny ZP → TKPA" },
+    { id: "e-ddimer", label: "Mało prawdopodobny → D-dimer" },
   ];
   assert.equal(matchScoreToBranch("wellspe", 6.0, wellsBranches).id, "e-ctpa");
   assert.equal(matchScoreToBranch("wellspe", 4.0, wellsBranches).id, "e-ddimer");
@@ -1147,7 +1147,7 @@ test("visit session & SOAP report: integrates diagnostics into [O] Objective and
     if (diagnosticsItems && diagnosticsItems.length > 0) {
       lines.push("• Przyłóżkowa ultrasonografia POCUS i panele laboratoryjne:");
       diagnosticsItems.forEach((d) => {
-        lines.push(`  * [${d.type}] ${d.title}: ${d.summary}${d.action ? ` ➔ Zalecenie: ${d.action}` : ""}`);
+        lines.push(`  * [${d.type}] ${d.title}: ${d.summary}${d.action ? ` → Zalecenie: ${d.action}` : ""}`);
       });
     }
     lines.push("");
@@ -1157,7 +1157,7 @@ test("visit session & SOAP report: integrates diagnostics into [O] Objective and
       if (alertDiags.length > 0) {
         lines.push("• Istotne patologie ultrasonograficzne i krytyczne wyniki lab (Red Flags):");
         alertDiags.forEach((d) => {
-          lines.push(`  - ⚠️ ${d.title}: ${d.summary}`);
+          lines.push(`  - [Alert] ${d.title}: ${d.summary}`);
         });
       }
     }
@@ -1172,12 +1172,12 @@ test("visit session & SOAP report: integrates diagnostics into [O] Objective and
   const soapText = formatSOAPWithDiagnostics(sampleDiags);
   assert.ok(soapText.includes("[O] BADANIE PRZEDMIOTOWE I DIAGNOSTYKA (OBJECTIVE)"));
   assert.ok(soapText.includes("Przyłóżkowa ultrasonografia POCUS i panele laboratoryjne:"));
-  assert.ok(soapText.includes("[POCUS] Protokół eFAST: DODATNI eFAST! Wolny płyn: Zachyłek Morisona ➔ Zalecenie: Pilna laparotomia"));
-  assert.ok(soapText.includes("[LAB] hs-cTnT: Rule-in NSTEMI (65 ng/L) ➔ Zalecenie: Pilna koronarografia"));
+  assert.ok(soapText.includes("[POCUS] Protokół eFAST: DODATNI eFAST! Wolny płyn: Zachyłek Morisona → Zalecenie: Pilna laparotomia"));
+  assert.ok(soapText.includes("[LAB] hs-cTnT: Rule-in NSTEMI (65 ng/L) → Zalecenie: Pilna koronarografia"));
   assert.ok(soapText.includes("[A] OCENA KLINICZNA I STRATYFIKACJA RYZYKA (ASSESSMENT)"));
   assert.ok(soapText.includes("Istotne patologie ultrasonograficzne i krytyczne wyniki lab (Red Flags):"));
-  assert.ok(soapText.includes("⚠️ Protokół eFAST: DODATNI eFAST! Wolny płyn: Zachyłek Morisona"));
-  assert.ok(soapText.includes("⚠️ hs-cTnT: Rule-in NSTEMI (65 ng/L)"));
+  assert.ok(soapText.includes("[Alert] Protokół eFAST: DODATNI eFAST! Wolny płyn: Zachyłek Morisona"));
+  assert.ok(soapText.includes("[Alert] hs-cTnT: Rule-in NSTEMI (65 ng/L)"));
 });
 
 test("ClinicalSafety: renal function formulas (CKD-EPI 2021 and Cockcroft-Gault)", () => {
@@ -1377,7 +1377,7 @@ test("visit session & SOAP report: integrates CDS alerts, renal status, and Clin
     if (alerts && alerts.length > 0) {
       lines.push("• Bezpieczeństwo farmakoterapii (CDS Alerts & DDI):");
       alerts.forEach((alt) => {
-        lines.push(`  - [Kat. ${alt.category}] ⛔ ${alt.title}`);
+        lines.push(`  - [Kat. ${alt.category}] [Alert] ${alt.title}`);
         lines.push(`    └─ Mechanizm: ${alt.mechanism}`);
         lines.push(`    └─ Rekomendacja: ${alt.action}`);
       });
@@ -1407,7 +1407,7 @@ test("visit session & SOAP report: integrates CDS alerts, renal status, and Clin
   assert.ok(soap.includes("Wywiad alergiczny: penicillin_anaphylaxis"));
   assert.ok(soap.includes("Obciążenia kliniczne: peptic_ulcer"));
   assert.ok(soap.includes("Bezpieczeństwo farmakoterapii (CDS Alerts & DDI):"));
-  assert.ok(soap.includes("[Kat. X] ⛔ Bezwzględne przeciwwskazanie: NLPZ w ciężkiej niewydolności nerek"));
+  assert.ok(soap.includes("[Kat. X] [Alert] Bezwzględne przeciwwskazanie: NLPZ w ciężkiej niewydolności nerek"));
   assert.ok(soap.includes("Autoryzowane odstępstwa kliniczne i audyt decyzji (Clinical Overrides):"));
   assert.ok(soap.includes("Stan wyższej konieczności: pilna analgezja przed repozycją złamania"));
 });

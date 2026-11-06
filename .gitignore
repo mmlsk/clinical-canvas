@@ -23,3 +23,6 @@ node_modules/
 
 # Generated single-file build
 /makieta-medyczna-canvas.html
+
+# Taste skill artifacts
+.taste-skill/

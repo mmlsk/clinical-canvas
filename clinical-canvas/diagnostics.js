@@ -129,7 +129,7 @@
       confidence,
       action,
       alert,
-      summary: `Protokół BLUE: Profil ${profile} ➔ Podejrzenie: ${primaryDiagnosis}.`,
+      summary: `Protokół BLUE: Profil ${profile} → Podejrzenie: ${primaryDiagnosis}.`,
     };
   }
 
@@ -372,7 +372,7 @@
       disturbance,
       pfRatio,
       ardsSeverity,
-      interpretation: `${disturbance}. Wskaźnik oksygenacji Horowitza (PaO2/FiO2): ${pfRatio} mmHg ➔ ${ardsSeverity}.`,
+      interpretation: `${disturbance}. Wskaźnik oksygenacji Horowitza (PaO2/FiO2): ${pfRatio} mmHg → ${ardsSeverity}.`,
     };
   }
 

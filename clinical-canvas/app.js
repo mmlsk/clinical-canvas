@@ -437,7 +437,7 @@
           outgoing.slice(0, 3).forEach((e) => {
             const targetNode = g.nodes.find((tn) => tn.id === e.to);
             const labelRaw = e.label || (targetNode ? targetNode.title : "Dalej");
-            const chipText = (labelRaw.length > 10 ? labelRaw.slice(0, 9) + "…" : labelRaw) + " ➔";
+            const chipText = (labelRaw.length > 10 ? labelRaw.slice(0, 9) + "…" : labelRaw) + " →";
             const chipW = Math.max(42, chipText.length * 6 + 12);
             if (chipX + chipW <= W - 10) {
               const chipG = S("g", {
@@ -823,14 +823,14 @@
     return `
     <div class="inline-calc-box" data-calc-box="${scoreKey}">
       <div class="inline-calc-header">
-        <span class="inline-calc-title">⚡ Szybka ocena: ${calcLabels[scoreKey]}</span>
+        <span class="inline-calc-title">Szybka ocena: ${calcLabels[scoreKey]}</span>
         <span class="inline-calc-score-badge" id="inline-score-badge-${scoreKey}" data-level="${isHigh ? "high" : "low"}">Wynik: ${currentTotal} pkt</span>
       </div>
       <div class="inline-calc-grid">
         ${itemsHTML}
       </div>
       <button type="button" class="inline-calc-apply-btn" data-calc-apply="${scoreKey}">
-        ✓ Zastosuj wynik i dopasuj gałąź schematu
+        Zastosuj wynik i dopasuj gałąź schematu
       </button>
     </div>`;
   }
@@ -892,7 +892,7 @@
                 .join("")}
             </div>
             <button type="button" class="branch-jump-btn" data-jump-node="${escape(target.id)}" data-branch-edge="${escape(e.id)}">
-              <span class="branch-arrow">Przejdź do:</span> <strong>${escape(target.title)}</strong> ➔
+              <span class="branch-arrow">Przejdź do:</span> <strong>${escape(target.title)}</strong> →
             </button>
           </div>`;
         })
@@ -926,7 +926,7 @@
     const contextualDiags = findNodeContextualDiagnostics(n);
     const tileDiagHTML = renderTileDiagBox(contextualDiags);
 
-    panel.innerHTML = `<div class="detail-head"><div class="kicker">${escape(TYPES[n.type])} · ${n.cohort === "a" ? "DOROŚLI" : n.cohort === "p" ? "DZIECI" : "WSPÓLNE"}</div><h2>${escape(n.title)}</h2><div class="meta">${n.custom ? "Treść własna / edytowana. Wymaga ponownej weryfikacji." : `Synteza źródeł sprawdzona: ${D.reviewed}. Nie oznacza aktualizacji wytycznej w tym dniu.`}</div><div class="detail-toolbar"><button data-action="edit">Edytuj krok</button><button data-action="child">+ Gałąź</button>${calculator ? `<button data-action="calculate" data-score="${calculator}">Oblicz ${calculator.toUpperCase()}</button>` : ""}</div></div><div class="detail-body"><p>${escape(d.body || "Brak opisu — możesz dodać własny.")}</p>${decisionCompartmentHTML}${tileDiagHTML}${tileDrugHTML}${SECTIONS.map(
+    panel.innerHTML = `<div class="detail-head"><div class="step-type">${escape(TYPES[n.type])} · ${n.cohort === "a" ? "DOROŚLI" : n.cohort === "p" ? "DZIECI" : "WSPÓLNE"}</div><h2>${escape(n.title)}</h2><div class="meta">${n.custom ? "Treść własna / edytowana. Wymaga ponownej weryfikacji." : `Synteza źródeł sprawdzona: ${D.reviewed}. Nie oznacza aktualizacji wytycznej w tym dniu.`}</div><div class="detail-toolbar"><button data-action="edit">Edytuj krok</button><button data-action="child">+ Gałąź</button>${calculator ? `<button data-action="calculate" data-score="${calculator}">Oblicz ${calculator.toUpperCase()}</button>` : ""}</div></div><div class="detail-body"><p>${escape(d.body || "Brak opisu — możesz dodać własny.")}</p>${decisionCompartmentHTML}${tileDiagHTML}${tileDrugHTML}${SECTIONS.map(
       ([key, label]) =>
         list(d[key]).length
           ? `<section class="detail-section ${key === "red" ? "red" : ""}"><h3>${label}</h3><ul>${list(
@@ -941,7 +941,7 @@
   }
   function renderEditor(n) {
     const d = n.data || {};
-    panel.innerHTML = `<div class="detail-head"><div class="kicker">EDYCJA LOKALNA</div><h2>Edytuj krok</h2><div class="meta">Zmiana oznaczy treść jako własną. Pola list: jeden punkt na linię.</div></div><div class="detail-body edit">
+    panel.innerHTML = `<div class="detail-head"><div class="step-type">EDYCJA LOKALNA</div><h2>Edytuj krok</h2><div class="meta">Zmiana oznaczy treść jako własną. Pola list: jeden punkt na linię.</div></div><div class="detail-body edit">
     <label for="edit-title">Tytuł</label><input id="edit-title" data-field="title" maxlength="500" value="${escape(n.title)}">
     <label for="edit-type">Typ</label><select id="edit-type" data-field="type">${Object.entries(
       TYPES,
@@ -967,7 +967,7 @@
       renderPanel();
       return;
     }
-    panel.innerHTML = `<div class="detail-head"><div class="kicker">POŁĄCZENIE KIERUNKOWE</div><h2>Etykieta decyzji</h2></div><div class="detail-body edit"><label for="edge-label">Etykieta</label><input id="edge-label" maxlength="300" value="${escape(e.label)}"><div class="actions"><button data-action="delete-edge">Usuń połączenie</button></div></div>`;
+    panel.innerHTML = `<div class="detail-head"><div class="step-type">POŁĄCZENIE KIERUNKOWE</div><h2>Etykieta decyzji</h2></div><div class="detail-body edit"><label for="edge-label">Etykieta</label><input id="edge-label" maxlength="300" value="${escape(e.label)}"><div class="actions"><button data-action="delete-edge">Usuń połączenie</button></div></div>`;
   }
   function changeHistory(kind) {
     const source = kind === "undo" ? undo : redo,
@@ -1673,7 +1673,7 @@
     .node[data-type="urgent"] .body { stroke: #9e322d; stroke-width: 1.5px; }
     .node[data-type="test"] .bar { fill: #355e90; }
     .node[data-type="treatment"] .bar { fill: #166260; }
-    .node[data-type="scale"] .bar { fill: #6366f1; }
+    .node[data-type="scale"] .bar { fill: #2f70bb; }
     .node[data-type="note"] .bar { fill: #64748b; }
     .node-type { fill: #536a6c; font-size: 11px; font-weight: 600; letter-spacing: 0.7px; text-transform: uppercase; }
     .node-text { fill: #182e30; font-size: 14px; font-weight: 600; }
@@ -1900,7 +1900,7 @@
     if (visitSession.diagnostics && visitSession.diagnostics.length > 0) {
       lines.push("• Przyłóżkowa ultrasonografia POCUS i panele laboratoryjne:");
       visitSession.diagnostics.forEach((d) => {
-        lines.push(`  * [${d.type}] ${d.title}: ${d.summary}${d.action ? ` ➔ Zalecenie: ${d.action}` : ""}`);
+        lines.push(`  * [${d.type}] ${d.title}: ${d.summary}${d.action ? ` → Zalecenie: ${d.action}` : ""}`);
       });
     }
     if (visitSession.calculators.length > 0) {
@@ -1929,7 +1929,7 @@
       if (alertDiags.length > 0) {
         lines.push("• Istotne patologie ultrasonograficzne i krytyczne wyniki lab (Red Flags):");
         alertDiags.forEach((d) => {
-          lines.push(`  - ⚠️ ${d.title}: ${d.summary}`);
+          lines.push(`  - [Alert] ${d.title}: ${d.summary}`);
         });
       }
     }
@@ -1952,7 +1952,7 @@
     if (safetyReport.alerts && safetyReport.alerts.length > 0) {
       lines.push("• Bezpieczeństwo farmakoterapii (CDS Alerts & DDI):");
       safetyReport.alerts.forEach((alt) => {
-        lines.push(`  - [Kat. ${alt.category}] ⛔ ${alt.title}`);
+        lines.push(`  - [Kat. ${alt.category}] [Alert] ${alt.title}`);
         lines.push(`    └─ Mechanizm: ${alt.mechanism}`);
         lines.push(`    └─ Rekomendacja: ${alt.action}`);
       });
@@ -2000,7 +2000,7 @@
           lines.push(`   └─ Zaznaczone zmienne: ${step.criteria.join(", ")}`);
         }
         if (step.branchTaken) {
-          lines.push(`   └─ Wybrana gałąź przejścia: "${step.branchTaken}" ➔`);
+          lines.push(`   └─ Wybrana gałąź przejścia: "${step.branchTaken}" →`);
         }
       });
     }
@@ -2225,7 +2225,7 @@
                 }).join("")}
               </div>
               <button type="button" class="branch-jump-btn" data-jump-node="${escape(target.id)}" data-branch-edge="${escape(e.id)}">
-                Przejdź do: <strong>${escape(target.title)}</strong> ➔
+                Przejdź do: <strong>${escape(target.title)}</strong> →
               </button>
             </div>`;
           }).join("")}
@@ -2262,10 +2262,10 @@
       nextBtn.disabled = !nextTargetId;
       if (nextTargetId) {
         const nextNode = g.nodes.find((tn) => tn.id === nextTargetId);
-        nextBtn.textContent = nextNode ? `Kolejny: ${nextNode.title.slice(0, 16)}… ➔` : "Kolejny krok ➔";
+        nextBtn.textContent = nextNode ? `Kolejny: ${nextNode.title.slice(0, 16)}… →` : "Kolejny krok →";
         nextBtn.dataset.nextId = nextTargetId;
       } else {
-        nextBtn.textContent = "Punkt końcowy ✓";
+        nextBtn.textContent = "Punkt końcowy";
       }
     }
   }
@@ -2309,7 +2309,7 @@
             <div class="dossier-audit-step">
               <strong>Etap ${idx + 1}: ${escape(step.title)}</strong> [${step.type}]
               ${step.criteria && step.criteria.length ? `<br><span style="color:#444">Zaznaczone kryteria: ${escape(step.criteria.join(", "))}</span>` : ""}
-              ${step.branchTaken ? `<br><strong style="color:#164c4b">➔ Wybrana gałąź: "${escape(step.branchTaken)}"</strong>` : ""}
+              ${step.branchTaken ? `<br><strong style="color:#164c4b">→ Wybrana gałąź: "${escape(step.branchTaken)}"</strong>` : ""}
             </div>
           `).join("")}
         </div>
@@ -2650,8 +2650,8 @@
     return `
       <section class="tile-drug-box">
         <div class="tile-drug-head">
-          <span class="tile-drug-title">💊 Sugerowana farmakoterapia doraźna (${weightKg} kg)</span>
-          <button type="button" class="pharm-quick-open-btn" data-action="open-pharm">Otwórz leksykon ➔</button>
+          <span class="tile-drug-title">Sugerowana farmakoterapia doraźna (${weightKg} kg)</span>
+          <button type="button" class="pharm-quick-open-btn" data-action="open-pharm">Otwórz leksykon →</button>
         </div>
         <div class="tile-drug-list">
           ${items.map((item) => {
@@ -2663,7 +2663,7 @@
                   ${item.notes ? `<div class="tile-drug-notes">${escape(item.notes)}</div>` : ""}
                 </div>
                 <button type="button" class="tile-drug-add-btn ${isAdded ? "added" : ""}" data-drug-name="${escape(item.name)}" data-drug-dose="${escape(item.dose)}" data-drug-route="${escape(item.route)}" data-drug-notes="${escape(item.notes)}">
-                  ${isAdded ? "✓ W planie" : "+ Dołącz"}
+                  ${isAdded ? "W planie" : "+ Dołącz"}
                 </button>
               </div>`;
           }).join("")}
@@ -2842,7 +2842,7 @@
               <div class="pharm-card-dose">Dawka: ${escape(item.dose)}</div>
               <div style="font-size:12px;color:var(--muted);line-height:1.45;margin-bottom:12px;">${escape(item.notes)}</div>
               <button type="button" class="pharm-add-btn ${isAdded ? "added" : ""}" data-drug-name="${escape(item.title)}" data-drug-dose="${escape(item.dose)}" data-drug-route="${escape(item.route)}" data-drug-notes="${escape(item.notes)}">
-                ${isAdded ? "✓ W planie" : "+ Dołącz do planu"}
+                ${isAdded ? "W planie" : "+ Dołącz do planu"}
               </button>
             </div>`;
         }).join("")}
@@ -2885,7 +2885,7 @@
             Reguła 4-2-1: 100 ml/kg na pierwsze 10 kg, 50 ml/kg na kolejne 10 kg, 20 ml/kg powyżej 20 kg.
           </div>
           <button type="button" class="pharm-add-btn ${isHsAdded ? "added" : ""}" data-drug-name="Płyny podtrzymujące (Holliday-Segar)" data-drug-dose="${hs.dailyMl} ml/24h (${hs.hourlyMl} ml/h)" data-drug-route="i.v." data-drug-notes="Płyn wieloelektrolitowy lub 0.9% NaCl z 5% Glukozą">
-            ${isHsAdded ? "✓ W planie" : "+ Dołącz nawadnianie podtrzymujące"}
+            ${isHsAdded ? "W planie" : "+ Dołącz nawadnianie podtrzymujące"}
           </button>
         </div>
 
@@ -2898,7 +2898,7 @@
             Zalecane krystaloidy zbilansowane (PWE, Plasmalyte) przed 0.9% NaCl. Monitorować odpowiedź hemodynamiczną (MAP ≥65 mmHg, powrót włośniczkowy, diureza, spadek mleczanów).
           </div>
           <button type="button" class="pharm-add-btn ${isSepsisAdded ? "added" : ""}" data-drug-name="Resuscytacja płynowa w sepsie (30 ml/kg)" data-drug-dose="${sepsisBolus} ml w 3h" data-drug-route="i.v." data-drug-notes="Krystaloid zbilansowany (PWE / Plasmalyte), kontrola objawów przewodnienia">
-            ${isSepsisAdded ? "✓ W planie" : "+ Dołącz bolus sepsy do planu"}
+            ${isSepsisAdded ? "W planie" : "+ Dołącz bolus sepsy do planu"}
           </button>
         </div>
 
@@ -2938,10 +2938,10 @@
             <strong>Wymagana objętość płynu do osiągnięcia celu:</strong> ${naDef.requiredLiters} L (${Math.round(naDef.requiredLiters * 1000)} ml)
           </div>
           <div class="pharm-alert">
-            <strong>⚠️ KRYTYCZNE OSTRZEŻENIE BEZPIECZEŃSTWA:</strong> ${naDef.warning}
+            <strong>KRYTYCZNE OSTRZEŻENIE BEZPIECZEŃSTWA:</strong> ${naDef.warning}
           </div>
           <button type="button" class="pharm-add-btn ${isNaAdded ? "added" : ""}" data-drug-name="Korekta hiponatremii (Adrogue-Madias)" data-drug-dose="${naDef.requiredLiters} L płynu (deficyt ${naDef.totalDeficitMmol} mmol)" data-drug-route="i.v." data-drug-notes="Maks. zmiana 8-10 mmol/L/24h. Kontrola elektrolitów co 2-4h.">
-            ${isNaAdded ? "✓ W planie" : "+ Dołącz korektę sodu do planu"}
+            ${isNaAdded ? "W planie" : "+ Dołącz korektę sodu do planu"}
           </button>
         </div>
 
@@ -2975,7 +2975,7 @@
             <strong>Ocena kliniczna:</strong> ${ab.interpretation}
           </div>
           <button type="button" class="pharm-add-btn ${isAbAdded ? "added" : ""}" data-drug-name="Korekta kwasicy metabolicznej" data-drug-dose="${ab.bicarbDeficitMmol > 0 ? `Deficyt ${ab.bicarbDeficitMmol} mmol HCO3- (podawać 1/2 dawki i.v.)` : "Monitorowanie RKZ"}" data-drug-route="i.v." data-drug-notes="${ab.interpretation.split(".")[0]}">
-            ${isAbAdded ? "✓ W planie" : "+ Dołącz plan leczenia kwasicy"}
+            ${isAbAdded ? "W planie" : "+ Dołącz plan leczenia kwasicy"}
           </button>
         </div>
       </div>`;
@@ -3008,7 +3008,7 @@
             <strong>Paracetamol:</strong> ${paraDose} co 6h p.o. / i.v. (max ${isChild ? "60 mg/kg/d" : "4000 mg/d"})
             <div style="margin-top: 4px;">
               <button type="button" class="pharm-add-btn ${isParaAdded ? "added" : ""}" data-drug-name="Paracetamol" data-drug-dose="${paraDose} co 6h" data-drug-route="p.o. / i.v." data-drug-notes="Brak działania przeciwzapalnego, bezpieczny żołądkowo">
-                ${isParaAdded ? "✓ W planie" : "+ Dodaj Paracetamol"}
+                ${isParaAdded ? "W planie" : "+ Dodaj Paracetamol"}
               </button>
             </div>
           </div>
@@ -3017,7 +3017,7 @@
             <strong>${nsaidName} (NLPZ):</strong> ${nsaidDose} ${isChild ? "co 8h p.o." : "co 12h i.v. / p.o."}
             <div style="margin-top: 4px;">
               <button type="button" class="pharm-add-btn ${isNsaidAdded ? "added" : ""}" data-drug-name="${nsaidName} (NLPZ)" data-drug-dose="${nsaidDose}" data-drug-route="${isChild ? "p.o." : "i.v. / p.o."}" data-drug-notes="Uwaga na wrzody, krwawienia i eGFR">
-                ${isNsaidAdded ? "✓ W planie" : `+ Dodaj ${nsaidName}`}
+                ${isNsaidAdded ? "W planie" : `+ Dodaj ${nsaidName}`}
               </button>
             </div>
           </div>
@@ -3026,7 +3026,7 @@
             <strong>Metamizol (Pyralgina):</strong> ${isChild ? "10-15 mg/kg i.v./p.o." : "1000 mg co 8h i.v. / p.o."} (max 4g/d)
             <div style="margin-top: 4px;">
               <button type="button" class="pharm-add-btn ${isMetaAdded ? "added" : ""}" data-drug-name="Metamizol (Pyralgina)" data-drug-dose="${isChild ? `${Math.round(w * 12)} mg` : "1000 mg co 8h"}" data-drug-route="i.v. / p.o." data-drug-notes="Silny lek spazmolityczny i przeciwgorączkowy">
-                ${isMetaAdded ? "✓ W planie" : "+ Dodaj Metamizol"}
+                ${isMetaAdded ? "W planie" : "+ Dodaj Metamizol"}
               </button>
             </div>
           </div>
@@ -3070,10 +3070,10 @@
             <strong>Dawka ratunkowa na ból przebijający:</strong> <b>${op.breakthroughDoseRange} mg</b> (1/10 do 1/6 dawki dobowej)
           </div>
           <div class="pharm-alert">
-            <strong>⚠️ ZASADA ROTACJI OPIOIDÓW:</strong> ${op.notes}
+            <strong>ZASADA ROTACJI OPIOIDÓW:</strong> ${op.notes}
           </div>
           <button type="button" class="pharm-add-btn ${isOpAdded ? "added" : ""}" data-drug-name="Schemat opioidowy (${op.drugTo})" data-drug-dose="${op.convertedDose} mg/d (ból przebijający: ${op.breakthroughDose} mg)" data-drug-route="wg protokołu" data-drug-notes="Równoważnik ${op.oralMorphineEquiv} mg OME/d. Redukcja dawki startowej o 25-50%.">
-            ${isOpAdded ? "✓ W planie" : "+ Dołącz schemat opioidowy do planu"}
+            ${isOpAdded ? "W planie" : "+ Dołącz schemat opioidowy do planu"}
           </button>
         </div>
       </div>`;
@@ -3107,7 +3107,7 @@
         </div>
 
         <div class="pharm-alert" style="background:#f0fdf4;border-color:#bbf7d0;border-left-color:#16a34a;color:#14532d;margin-bottom:14px;">
-          <strong>🛡️ GŁÓWNE ZASADY NPOA:</strong> Zawsze pobierz krew lub materiał na posiew PRZED podaniem pierwszej dawki antybiotyku. W sepsie czas do podania <1h. Monitoruj stężenia wankomycyny i aminoglikozydów. Przy eGFR < 50 ml/min/1.73m² zweryfikuj dawkę leku.
+          <strong>GŁÓWNE ZASADY NPOA:</strong> Zawsze pobierz krew lub materiał na posiew PRZED podaniem pierwszej dawki antybiotyku. W sepsie czas do podania <1h. Monitoruj stężenia wankomycyny i aminoglikozydów. Przy eGFR < 50 ml/min/1.73m² zweryfikuj dawkę leku.
         </div>
 
         <div class="pharm-grid">
@@ -3125,7 +3125,7 @@
                   <em>${escape(reg.notes)}</em>
                 </div>
                 <button type="button" class="pharm-add-btn ${isAdded ? "added" : ""}" data-drug-name="Antybiotyk: ${escape(reg.subgroup)}" data-drug-dose="${escape(reg.firstLine)}" data-drug-route="wg wskazań" data-drug-notes="Alternatywa: ${escape(reg.alternative)}">
-                  ${isAdded ? "✓ W planie" : "+ Dołącz schemat NPOA do planu"}
+                  ${isAdded ? "W planie" : "+ Dołącz schemat NPOA do planu"}
                 </button>
               </div>`;
           }).join("")}
@@ -3226,7 +3226,7 @@
       if (name && dose) {
         addPrescription({ name, dose, route, notes });
         drugBtn.classList.add("added");
-        drugBtn.textContent = "✓ W planie";
+        drugBtn.textContent = "W planie";
       }
       return;
     }
@@ -3348,8 +3348,8 @@
     return `
       <section class="tile-diag-box">
         <div class="tile-diag-head">
-          <span class="tile-diag-title">🔬 Sugerowana diagnostyka przyłóżkowa POCUS / Lab</span>
-          <button type="button" class="diag-quick-open-btn" data-action="open-diag">Otwórz pracownię ➔</button>
+          <span class="tile-diag-title">Sugerowana diagnostyka przyłóżkowa POCUS / Lab</span>
+          <button type="button" class="diag-quick-open-btn" data-action="open-diag">Otwórz pracownię →</button>
         </div>
         <div class="tile-diag-list">
           ${items.map((item) => {
@@ -3361,7 +3361,7 @@
                 </div>
                 <div style="display:flex;gap:6px;">
                   <button type="button" class="tile-diag-add-btn ${isRecorded ? "added" : ""}" data-diag-title="${escape(item.title)}" data-diag-tab="${escape(item.tab)}" data-action="open-diag">
-                    ${isRecorded ? "✓ W karcie" : "Zbadaj ➔"}
+                    ${isRecorded ? "W karcie" : "Zbadaj →"}
                   </button>
                 </div>
               </div>`;
@@ -3439,7 +3439,7 @@
                 </div>
                 <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">${escape(win.desc)}</div>
                 <div class="pocus-status-btns">
-                  <button type="button" class="pocus-btn normal ${currentVal === "normal" ? "selected" : ""}" data-efast-win="${win.key}" data-val="normal">✓ Norma</button>
+                  <button type="button" class="pocus-btn normal ${currentVal === "normal" ? "selected" : ""}" data-efast-win="${win.key}" data-val="normal">Norma</button>
                   <button type="button" class="pocus-btn fluid ${currentVal === "fluid" ? "selected" : ""}" data-efast-win="${win.key}" data-val="fluid">+ Płyn</button>
                   ${isPericardial ? `<button type="button" class="pocus-btn tamponade ${currentVal === "tamponade" ? "selected" : ""}" data-efast-win="${win.key}" data-val="tamponade">! Tamponada</button>` : ""}
                   ${isPleural ? `<button type="button" class="pocus-btn ptx ${currentVal === "pneumothorax" ? "selected" : ""}" data-efast-win="${win.key}" data-val="pneumothorax">! Odma</button>` : ""}
@@ -3450,12 +3450,12 @@
         </div>
 
         <div class="diag-alert ${evalResult.isPositive ? "" : "ok"}">
-          <strong>${evalResult.isPositive ? "⚠️ WYNIK PATOLOGICZNY:" : "✓ WYNIK PRAWIDŁOWY:"}</strong> ${escape(evalResult.summary)}
+          <strong>${evalResult.isPositive ? "WYNIK PATOLOGICZNY:" : "WYNIK PRAWIDŁOWY:"}</strong> ${escape(evalResult.summary)}
           ${evalResult.action ? `<br><strong>Postępowanie:</strong> ${escape(evalResult.action)}` : ""}
         </div>
 
         <button type="button" id="diag-save-efast-btn" class="pharm-add-btn ${isRecorded ? "added" : ""}" style="font-size:12.5px;padding:8px 14px;">
-          ${isRecorded ? "✓ Zaktualizowano w karcie" : "+ Dołącz wynik eFAST do dokumentacji"}
+          ${isRecorded ? "Zaktualizowano w karcie" : "+ Dołącz wynik eFAST do dokumentacji"}
         </button>
       </div>`;
   }
@@ -3471,11 +3471,11 @@
           <div class="pharm-field">
             <label for="blue-profile-select">Profil dominujący:</label>
             <select id="blue-profile-select">
-              <option value="A" ${blueState.profileType === "A" ? "selected" : ""}>Profil A (linie A, ślizganie obecne) ➔ Astma / POChP / ZP</option>
-              <option value="B" ${blueState.profileType === "B" ? "selected" : ""}>Profil B (liczne obustronne linie B) ➔ Obrzęk płuc kardiogenny</option>
-              <option value="B_prime" ${blueState.profileType === "B_prime" ? "selected" : ""}>Profil B' (linie B bez ślizgania) ➔ Zapalenie płuc</option>
-              <option value="A_prime" ${blueState.profileType === "A_prime" ? "selected" : ""}>Profil A' (linie A bez ślizgania + punkt płucny) ➔ Odma</option>
-              <option value="C" ${blueState.profileType === "C" ? "selected" : ""}>Profil C (konsolidacja podopłucnowa) ➔ Zapalenie płuc</option>
+              <option value="A" ${blueState.profileType === "A" ? "selected" : ""}>Profil A (linie A, ślizganie obecne) → Astma / POChP / ZP</option>
+              <option value="B" ${blueState.profileType === "B" ? "selected" : ""}>Profil B (liczne obustronne linie B) → Obrzęk płuc kardiogenny</option>
+              <option value="B_prime" ${blueState.profileType === "B_prime" ? "selected" : ""}>Profil B' (linie B bez ślizgania) → Zapalenie płuc</option>
+              <option value="A_prime" ${blueState.profileType === "A_prime" ? "selected" : ""}>Profil A' (linie A bez ślizgania + punkt płucny) → Odma</option>
+              <option value="C" ${blueState.profileType === "C" ? "selected" : ""}>Profil C (konsolidacja podopłucnowa) → Zapalenie płuc</option>
             </select>
           </div>
 
@@ -3506,9 +3506,9 @@
             <strong>Profil BLUE:</strong> ${escape(res.profile)}<br>
             <strong>Zalecane postępowanie:</strong> ${escape(res.action)}
           </div>
-          ${res.alert ? `<div class="diag-alert" style="margin:8px 0 12px;">⚠️ Stan zagrożenia życia — pilna interwencja!</div>` : ""}
+          ${res.alert ? `<div class="diag-alert" style="margin:8px 0 12px;">Stan zagrożenia życia — pilna interwencja!</div>` : ""}
           <button type="button" id="diag-save-blue-btn" class="pharm-add-btn ${isRecorded ? "added" : ""}">
-            ${isRecorded ? "✓ Zaktualizowano w karcie" : "+ Dołącz protokół BLUE do karty"}
+            ${isRecorded ? "Zaktualizowano w karcie" : "+ Dołącz protokół BLUE do karty"}
           </button>
         </div>
       </div>`;
@@ -3584,9 +3584,9 @@
             <strong>Wnioski:</strong> ${escape(res.summary)}<br>
             <strong>Postępowanie:</strong> ${escape(res.action)}
           </div>
-          ${res.alert ? `<div class="diag-alert">⚠️ Zidentyfikowano krytyczną patologię sercowo-naczyniową!</div>` : ""}
+          ${res.alert ? `<div class="diag-alert">Zidentyfikowano krytyczną patologię sercowo-naczyniową!</div>` : ""}
           <button type="button" id="diag-save-focus-btn" class="pharm-add-btn ${isRecorded ? "added" : ""}" style="margin-top:10px;">
-            ${isRecorded ? "✓ Zaktualizowano w karcie" : "+ Dołącz badanie FOCUS & DVT do karty"}
+            ${isRecorded ? "Zaktualizowano w karcie" : "+ Dołącz badanie FOCUS & DVT do karty"}
           </button>
         </div>
       </div>`;
@@ -3656,7 +3656,7 @@
             <small style="color:var(--muted)">${escape(ctnRes.recommendation)}</small>
           </div>
           <button type="button" id="diag-save-ctn-btn" class="pharm-add-btn ${isCtnRecorded ? "added" : ""}" style="margin-top:10px;">
-            ${isCtnRecorded ? "✓ W karcie" : "+ Dołącz hs-cTn do karty"}
+            ${isCtnRecorded ? "W karcie" : "+ Dołącz hs-cTn do karty"}
           </button>
         </div>
 
@@ -3679,7 +3679,7 @@
             <small style="color:var(--muted)">${escape(ddimerRes.recommendation)}</small>
           </div>
           <button type="button" id="diag-save-ddimer-btn" class="pharm-add-btn ${isDdimerRecorded ? "added" : ""}" style="margin-top:10px;">
-            ${isDdimerRecorded ? "✓ W karcie" : "+ Dołącz D-dimer do karty"}
+            ${isDdimerRecorded ? "W karcie" : "+ Dołącz D-dimer do karty"}
           </button>
         </div>
 
@@ -3701,7 +3701,7 @@
             <small style="color:var(--muted)">${escape(lactRes.recommendation)}</small>
           </div>
           <button type="button" id="diag-save-lact-btn" class="pharm-add-btn ${isLactRecorded ? "added" : ""}" style="margin-top:10px;">
-            ${isLactRecorded ? "✓ W karcie" : "+ Dołącz mleczany do karty"}
+            ${isLactRecorded ? "W karcie" : "+ Dołącz mleczany do karty"}
           </button>
         </div>
 
@@ -3730,10 +3730,10 @@
           </div>
           <div class="diag-result-box">
             <strong>Zaburzenie:</strong> ${escape(abgRes.disturbance)}<br>
-            <strong>PaO2/FiO2:</strong> ${abgRes.pfRatio} mmHg ➔ ${escape(abgRes.ardsSeverity)}
+            <strong>PaO2/FiO2:</strong> ${abgRes.pfRatio} mmHg → ${escape(abgRes.ardsSeverity)}
           </div>
           <button type="button" id="diag-save-abg-btn" class="pharm-add-btn ${isAbgRecorded ? "added" : ""}" style="margin-top:10px;">
-            ${isAbgRecorded ? "✓ W karcie" : "+ Dołącz gazometrię do karty"}
+            ${isAbgRecorded ? "W karcie" : "+ Dołącz gazometrię do karty"}
           </button>
         </div>
       </div>`;
@@ -3935,7 +3935,7 @@
       } else if (report.warningCount > 0) {
         badge.textContent = report.warningCount;
       } else {
-        badge.textContent = "✓";
+        badge.textContent = "OK";
       }
     }
 
@@ -4000,9 +4000,9 @@
     if (summaryBox) {
       summaryBox.className = `safety-summary-box ${report.criticalCount > 0 ? "critical" : report.warningCount > 0 ? "warning" : "safe"}`;
       summaryBox.innerHTML = `
-        <strong>${report.criticalCount > 0 ? "⛔ KRYTYCZNE ZAGROŻENIE BEZPIECZEŃSTWA (Kat. X)" : report.warningCount > 0 ? "⚠️ OSTRZEŻENIE O INTERAKCJI (Kat. D)" : "🛡️ PLAN BEZPIECZNY (Zgodny z wytycznymi)"}</strong>
+        <strong>${report.criticalCount > 0 ? "KRYTYCZNE ZAGROŻENIE BEZPIECZEŃSTWA (Kat. X)" : report.warningCount > 0 ? "OSTRZEŻENIE O INTERAKCJI (Kat. D)" : "PLAN BEZPIECZNY (Zgodny z wytycznymi)"}</strong>
         <div>${escape(report.summary)}</div>
-        ${visitSession.safetyOverrides && visitSession.safetyOverrides.length > 0 ? `<div style="margin-top:6px; font-weight:600; color:#2e7d32;">✓ Zarejestrowano ${visitSession.safetyOverrides.length} autoryzowane odstępstwo(-a) kliniczne.</div>` : ""}
+        ${visitSession.safetyOverrides && visitSession.safetyOverrides.length > 0 ? `<div style="margin-top:6px; font-weight:600; color:#1e7b4f;">Zarejestrowano ${visitSession.safetyOverrides.length} autoryzowane odstępstwo(-a) kliniczne.</div>` : ""}
       `;
     }
 
@@ -4013,7 +4013,7 @@
       } else {
         ordersEl.innerHTML = visitSession.pharmacy
           .map(
-            (p) => `<span class="safety-order-pill">💊 ${escape(p.name)}: <b>${escape(p.dose)}</b> (${escape(p.route || "i.v.")})</span>`
+            (p) => `<span class="safety-order-pill">${escape(p.name)}: <b>${escape(p.dose)}</b> (${escape(p.route || "i.v.")})</span>`
           )
           .join("");
       }
@@ -4024,7 +4024,7 @@
       if (report.alerts.length === 0) {
         alertsEl.innerHTML = `
           <div class="safety-summary-box safe" style="margin:0;">
-            <strong>🛡️ Brak przeciwwskazań i istotnych interakcji:</strong>
+            <strong>Brak przeciwwskazań i istotnych interakcji:</strong>
             Wszystkie zaordynowane leki są zgodne z wybranym profilem nerkowym, alergicznym i klinicznym pacjenta.
           </div>
         `;
