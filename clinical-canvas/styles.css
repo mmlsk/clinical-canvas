@@ -23,6 +23,7 @@
   background: var(--bg);
 }
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+[hidden]{display:none !important}
 #calc-dialog{max-width:1080px;width:calc(100% - 32px);max-height:92dvh;padding:24px}
 #soap-dialog{max-width:960px;width:calc(100% - 32px);max-height:92dvh;padding:24px;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
 .soap-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:8px}
@@ -35,7 +36,7 @@
 .soap-actions-left,.soap-actions-right{display:flex;align-items:center;gap:10px}
 .danger-btn{color:var(--danger);border-color:#dcb4ae;background:var(--paper)}
 .danger-btn:hover{background:var(--danger-soft);border-color:var(--danger)}
-#soap-badge{display:inline-block;padding:1px 6px;font-size:10px;font-weight:700;border-radius:10px;background:var(--accent);color:var(--paper);margin-left:4px;vertical-align:middle}
+#soap-badge{display:inline-block;padding:1px 6px;font-size:11px;font-weight:700;border-radius:10px;background:var(--accent);color:var(--paper);margin-left:4px;vertical-align:middle}
 .calc-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .calc-header h2{font-size:26px;margin:4px 0 16px}
 .calc-meta{font-size:12px;letter-spacing:.6px;text-transform:uppercase;color:var(--accent);font-weight:650}
@@ -180,13 +181,12 @@ h1 {
   gap: 4px;
 }
 .identity strong {
-  font-family: Georgia, serif;
-  font-size: 23px;
-  font-weight: 500;
-  letter-spacing: -0.5px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
 }
 .identity span {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.3px;
   color: var(--muted);
 }
@@ -214,7 +214,7 @@ h1 {
 .side-heading {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1px;
   font-weight: 700;
   color: var(--muted);
@@ -248,7 +248,7 @@ h1 {
   min-height: 43px;
 }
 .module .num {
-  font-size: 10px;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
   width: 19px;
@@ -261,7 +261,7 @@ h1 {
 }
 .module .count {
   margin-left: auto;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 .side-note {
@@ -289,7 +289,7 @@ h1 {
   margin-bottom: 20px;
 }
 .stage-meta {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--accent);
   font-weight: 700;
   letter-spacing: 1.6px;
@@ -302,7 +302,7 @@ h1 {
   max-width: 880px;
 }
 .scope-note {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   margin-top: 9px;
   line-height: 1.5;
@@ -388,7 +388,7 @@ h1 {
   justify-content: space-between;
   gap: 10px;
   padding: 10px 12px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   background: var(--paper);
   border-top: 1px solid var(--line);
@@ -412,7 +412,7 @@ h1 {
 }
 .node .node-type {
   fill: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.7px;
 }
 .node .node-sub {
@@ -489,7 +489,7 @@ h1 {
 }
 .node-chip .chip-text {
   fill: var(--accent);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   pointer-events: none;
   transition: fill 0.15s ease;
@@ -506,7 +506,7 @@ h1 {
 }
 .edge-label {
   fill: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   pointer-events: none;
 }
 .edge-mask {
@@ -531,7 +531,7 @@ summary {
   font-weight: 600;
 }
 summary span {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   color: var(--muted);
   margin-left: 8px;
@@ -563,7 +563,7 @@ summary span {
   background: var(--soft);
 }
 .detail-head .step-type {
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 1.1px;
   color: var(--accent);
   font-weight: 600;
@@ -576,7 +576,7 @@ summary span {
   letter-spacing: -0.3px;
 }
 .detail-head .meta {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   margin-top: 8px;
   line-height: 1.6;
@@ -595,7 +595,7 @@ summary span {
   margin-top: 15px;
 }
 .detail-section h3 {
-  font-size: 10px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.8px;
   margin-bottom: 8px;
@@ -636,7 +636,7 @@ summary span {
   justify-content: space-between;
 }
 .decision-count-badge {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 10px;
@@ -781,7 +781,7 @@ summary span {
   border-top: 1px solid var(--line);
   padding-top: 13px;
   margin-top: 18px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
 }
 .legend {
@@ -854,7 +854,7 @@ dialog .source-line {
   font-size: 12px;
 }
 .dialog-url {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   overflow-wrap: anywhere;
 }
@@ -935,7 +935,7 @@ dialog .source-line {
     padding: 22px 18px;
   }
   .sidebar {
-    padding: 23px 12px;
+    padding: 23px 16px;
   }
   .stage-layout {
     grid-template-columns: minmax(0, 1fr) 290px;
@@ -1031,7 +1031,7 @@ dialog .source-line {
     font-size: 25px;
   }
   .scope-note {
-    font-size: 10px;
+    font-size: 11px;
   }
   .canvas-actions {
     flex-wrap: wrap;
@@ -1124,7 +1124,7 @@ dialog .source-line {
   max-width: 100vw;
   background: var(--paper);
   border-left: 2px solid var(--accent);
-  box-shadow: -4px 0 28px rgba(0, 0, 0, 0.15); /* taste-skill-ignore */
+  box-shadow: -2px 0 12px rgba(0, 0, 0, 0.05); /* taste-skill-ignore */
   z-index: 100;
   display: flex;
   flex-direction: column;
@@ -1145,10 +1145,8 @@ dialog .source-line {
   gap: 12px;
 }
 .walkthrough-badge {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--accent);
 }
 .walkthrough-title-area h2 {
