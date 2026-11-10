@@ -26,8 +26,22 @@ test("GCS: every NT location suppresses the total; incomplete/invalid is not a s
   }
   assert.equal(S.gcs({population:"adult",e:null,v:5,m:6}).ok,false);
   assert.equal(S.gcs({population:"adult",e:0,v:5,m:6}).ok,false);
-  assert.equal(S.gcs({population:"young",e:4,v:5,m:6}).ok,false);
+  assert.equal(S.gcs({population:"invalid",e:4,v:5,m:6}).ok,false);
   assert.equal(S.gcs({population:"childOver5",e:4,v:5,m:6}).total,15);
+});
+test("pGCS (young <=5 years): evaluates all 120 pediatric combinations and NT handling",()=>{
+  for(let e=1;e<=4;e++)for(let v=1;v<=5;v++)for(let m=1;m<=6;m++){
+    const r=S.gcs({population:"young",e,v,m});
+    assert.equal(r.ok,true);
+    assert.equal(r.isPediatric,true);
+    assert.equal(r.total,e+v+m);
+    assert.match(r.summary,/pGCS pediatryczna/);
+  }
+  const nt=S.gcs({population:"young",e:4,v:"NT",m:6});
+  assert.equal(nt.ok,true);
+  assert.equal(nt.total,null);
+  assert.match(nt.summary,/NT/);
+  assert.equal(S.gcs({population:"young",e:4,v:6,m:6}).ok,false);
 });
 test("NEWS2: respiratory boundaries",()=>{
   for(const [rr,p] of [[0,3],[8,3],[9,1],[11,1],[12,0],[20,0],[21,2],[24,2],[25,3]])
@@ -250,4 +264,200 @@ test("Wells PE: heart rate boundary and input validation",()=>{
   assert.equal(S.wellsPe({...zero, hr: -5}).ok, false);
   assert.equal(S.wellsPe({...zero, hr: 360}).ok, false);
   assert.equal(S.wellsPe({...zero, dvtSigns: null}).ok, false);
+});
+test("PERC: 0/8 rule-out, all 8 criteria boundaries, and mandatory lowPretestConfirmed",()=>{
+  const base = {
+    population: "adult", lowPretestConfirmed: true,
+    age: 35, hr: 80, spo2: 98,
+    unilateralLegSwelling: false, hemoptysis: false,
+    recentTraumaOrSurgery: false, previousVte: false, hormoneUse: false,
+  };
+  const r0 = S.perc(base);
+  assert.equal(r0.ok, true);
+  assert.equal(r0.total, 0);
+  assert.equal(r0.ruledOut, true);
+  assert.equal(r0.kind, "neutral");
+
+  // Require lowPretestConfirmed
+  assert.equal(S.perc({...base, lowPretestConfirmed: false}).ok, false);
+  assert.equal(S.perc({...base, population: "child"}).ok, false);
+
+  // Boundaries: age 49 vs 50, hr 99 vs 100, spo2 95 vs 94
+  assert.equal(S.perc({...base, age: 49}).total, 0);
+  assert.equal(S.perc({...base, age: 50}).total, 1);
+  assert.equal(S.perc({...base, hr: 99}).total, 0);
+  assert.equal(S.perc({...base, hr: 100}).total, 1);
+  assert.equal(S.perc({...base, spo2: 95}).total, 0);
+  assert.equal(S.perc({...base, spo2: 94}).total, 1);
+
+  for (const k of ["unilateralLegSwelling","hemoptysis","recentTraumaOrSurgery","previousVte","hormoneUse"]) {
+    const r1 = S.perc({...base, [k]: true});
+    assert.equal(r1.total, 1);
+    assert.equal(r1.ruledOut, false);
+    assert.equal(r1.kind, "warning");
+  }
+
+  const r8 = S.perc({
+    population: "adult", lowPretestConfirmed: true,
+    age: 65, hr: 110, spo2: 91,
+    unilateralLegSwelling: true, hemoptysis: true,
+    recentTraumaOrSurgery: true, previousVte: true, hormoneUse: true,
+  });
+  assert.equal(r8.total, 8);
+  assert.equal(r8.ruledOut, false);
+});
+test("Glasgow-Blatchford (GBS): sex-specific Hb, urea mmol/mgdl, SBP/HR cutoffs and NICE=0 threshold",()=>{
+  const base = {
+    population: "adult", sex: "male", ureaUnit: "mmol",
+    urea: 5.0, hb: 14.0, sbp: 120, hr: 80,
+    melena: false, syncope: false, hepaticDisease: false, cardiacFailure: false,
+  };
+  const r0 = S.gbs(base);
+  assert.equal(r0.ok, true);
+  assert.equal(r0.total, 0);
+  assert.equal(r0.kind, "neutral");
+  assert.match(r0.headline, /GBS = 0/);
+
+  // Urea boundaries (mmol/l): <6.5:0, 6.5-7.9:2, 8.0-9.9:3, 10.0-24.9:4, >=25.0:6
+  assert.equal(S.gbs({...base, urea: 6.4}).total, 0);
+  assert.equal(S.gbs({...base, urea: 6.5}).total, 2);
+  assert.equal(S.gbs({...base, urea: 8.0}).total, 3);
+  assert.equal(S.gbs({...base, urea: 10.0}).total, 4);
+  assert.equal(S.gbs({...base, urea: 25.0}).total, 6);
+
+  // Sex-specific Hb boundaries
+  assert.equal(S.gbs({...base, sex: "male", hb: 13.0}).total, 0);
+  assert.equal(S.gbs({...base, sex: "male", hb: 12.5}).total, 1);
+  assert.equal(S.gbs({...base, sex: "male", hb: 11.5}).total, 3);
+  assert.equal(S.gbs({...base, sex: "male", hb: 9.9}).total, 6);
+  assert.equal(S.gbs({...base, sex: "female", hb: 12.5}).total, 0);
+  assert.equal(S.gbs({...base, sex: "female", hb: 11.5}).total, 1);
+  assert.equal(S.gbs({...base, sex: "female", hb: 9.9}).total, 6);
+
+  // SBP boundaries: >=110:0, 100-109:1, 90-99:2, <90:3
+  assert.equal(S.gbs({...base, sbp: 110}).total, 0);
+  assert.equal(S.gbs({...base, sbp: 105}).total, 1);
+  assert.equal(S.gbs({...base, sbp: 95}).total, 2);
+  assert.equal(S.gbs({...base, sbp: 89}).total, 3);
+
+  // Maximum score = 23
+  const rMax = S.gbs({
+    population: "adult", sex: "male", ureaUnit: "mmol",
+    urea: 30, hb: 8.0, sbp: 80, hr: 115,
+    melena: true, syncope: true, hepaticDisease: true, cardiacFailure: true,
+  });
+  assert.equal(rMax.total, 23);
+  assert.equal(rMax.kind, "high");
+  assert.equal(S.gbs({...base, population: "child"}).ok, false);
+});
+test("Alvarado & PAS: temperature thresholds (37.3 vs 38.0), weights and risk tiers",()=>{
+  const base = {
+    variant: "alvarado", temp: 36.8,
+    rlqTenderness: false, leukocytosis: false, migration: false,
+    anorexia: false, nauseaVomiting: false, reboundOrHopping: false, leftShift: false,
+  };
+  assert.equal(S.alvarado(base).total, 0);
+  assert.equal(S.alvarado({...base, temp: 37.2}).total, 0);
+  assert.equal(S.alvarado({...base, temp: 37.3}).total, 1);
+  assert.equal(S.alvarado({...base, variant: "pas", temp: 37.9}).total, 0);
+  assert.equal(S.alvarado({...base, variant: "pas", temp: 38.0}).total, 1);
+
+  const full = {
+    variant: "pas", temp: 38.5,
+    rlqTenderness: true, leukocytosis: true, migration: true,
+    anorexia: true, nauseaVomiting: true, reboundOrHopping: true, leftShift: true,
+  };
+  const rFull = S.alvarado(full);
+  assert.equal(rFull.total, 10);
+  assert.equal(rFull.isPediatric, true);
+  assert.equal(rFull.kind, "high");
+});
+test("HEART Score: age brackets, 0-10 sum, and critical flag override on positive troponin/ECG",()=>{
+  const base = { population: "adult", history: 0, ecg: 0, age: 40, riskFactors: 0, troponin: 0 };
+  assert.equal(S.heart(base).total, 0);
+  assert.equal(S.heart(base).kind, "neutral");
+  assert.equal(S.heart({...base, age: 44}).total, 0);
+  assert.equal(S.heart({...base, age: 45}).total, 1);
+  assert.equal(S.heart({...base, age: 64}).total, 1);
+  assert.equal(S.heart({...base, age: 65}).total, 2);
+
+  // Critical flag when total <=3 but troponin >=1 or ecg === 2
+  const critTrop = S.heart({...base, troponin: 1});
+  assert.equal(critTrop.total, 1);
+  assert.equal(critTrop.criticalFlag, true);
+  assert.equal(critTrop.kind, "warning");
+
+  const critEcg = S.heart({...base, ecg: 2});
+  assert.equal(critEcg.total, 2);
+  assert.equal(critEcg.criticalFlag, true);
+  assert.equal(critEcg.kind, "warning");
+
+  const maxHeart = S.heart({ population: "adult", history: 2, ecg: 2, age: 75, riskFactors: 2, troponin: 2 });
+  assert.equal(maxHeart.total, 10);
+  assert.equal(maxHeart.kind, "high");
+});
+test("CHA2DS2-VA (ESC 2024) & HAS-BLED: age brackets, sex-neutral AF scoring and bleeding risk",()=>{
+  const afBase = {
+    population: "adult", age: 55,
+    chf: false, hypertension: false, diabetes: false, strokeTiaTe: false, vascularDisease: false,
+  };
+  assert.equal(S.cha2ds2va(afBase).total, 0);
+  assert.equal(S.cha2ds2va(afBase).kind, "neutral");
+  assert.equal(S.cha2ds2va({...afBase, age: 65}).total, 1);
+  assert.equal(S.cha2ds2va({...afBase, age: 65}).kind, "warning");
+  assert.equal(S.cha2ds2va({...afBase, age: 75}).total, 2);
+  assert.equal(S.cha2ds2va({...afBase, age: 75}).kind, "high");
+  assert.equal(S.cha2ds2va({...afBase, strokeTiaTe: true}).total, 2);
+  assert.equal(S.cha2ds2va({
+    population: "adult", age: 80,
+    chf: true, hypertension: true, diabetes: true, strokeTiaTe: true, vascularDisease: true,
+  }).total, 8);
+
+  const hbBase = {
+    population: "adult",
+    hypertension: false, renalDisease: false, liverDisease: false, strokeHistory: false,
+    bleedingHistory: false, labileInr: false, elderly: false, drugs: false, alcohol: false,
+  };
+  assert.equal(S.hasbled(hbBase).total, 0);
+  assert.equal(S.hasbled(hbBase).kind, "neutral");
+  const hb3 = S.hasbled({...hbBase, hypertension: true, elderly: true, drugs: true});
+  assert.equal(hb3.total, 3);
+  assert.equal(hb3.kind, "warning");
+  assert.match(hb3.action, /NIE stanowi przeciwwskazania/);
+});
+test("NIHSS & ABCD2: 15-item stroke scale (0-42, UN handling) and TIA score with NICE warning",()=>{
+  const nihssZero = {
+    population: "adult",
+    ia:0, ib:0, ic:0, gaze:0, visual:0, facial:0,
+    motorArmL:0, motorArmR:0, motorLegL:0, motorLegR:0,
+    ataxia:0, sensory:0, language:0, dysarthria:0, extinction:0,
+  };
+  const r0 = S.nihss(nihssZero);
+  assert.equal(r0.ok, true);
+  assert.equal(r0.total, 0);
+  assert.match(r0.headline, /tylnego krążenia/);
+
+  const rUn = S.nihss({...nihssZero, motorArmL: "UN", ataxia: "UN", dysarthria: "UN", facial: 2});
+  assert.equal(rUn.ok, true);
+  assert.equal(rUn.total, 2);
+  assert.equal(rUn.hasUn, true);
+  assert.equal(S.nihss({...nihssZero, ia: "UN"}).ok, false); // 1a cannot be UN
+
+  const rMax = S.nihss({
+    population: "adult",
+    ia:3, ib:2, ic:2, gaze:2, visual:3, facial:3,
+    motorArmL:4, motorArmR:4, motorLegL:4, motorLegR:4,
+    ataxia:2, sensory:2, language:3, dysarthria:2, extinction:2,
+  });
+  assert.equal(rMax.total, 42);
+  assert.equal(rMax.kind, "high");
+
+  const abcd0 = S.abcd2({ population: "adult", age: 50, sbp: 120, dbp: 75, clinicalFeatures: 0, duration: 0, diabetes: false });
+  assert.equal(abcd0.ok, true);
+  assert.equal(abcd0.total, 0);
+  assert.match(abcd0.action, /NICE NG128/);
+
+  const abcdMax = S.abcd2({ population: "adult", age: 65, sbp: 150, dbp: 95, clinicalFeatures: 2, duration: 2, diabetes: true });
+  assert.equal(abcdMax.total, 7);
+  assert.equal(abcdMax.kind, "high");
 });

@@ -711,13 +711,23 @@
     if (!n) return null;
     const title = (n.title || "").toLowerCase();
     const d = n.data || {};
-    const text = [title, ...(d.red || []), ...(d.tests || []), ...(d.criteria || [])].join(" ").toLowerCase();
+    const text = [title, d.body || "", ...(d.red || []), ...(d.tests || []), ...(d.criteria || [])].join(" ").toLowerCase();
+    const isPed = n.cohort === "p";
+    if (/\bperc\b/i.test(text) && !/wells/i.test(title)) return "perc";
     if (/wellspe|wells|zatorowoś|d-dimer/i.test(text)) return "wellspe";
     if (/curb65|curb|zapaleni.*płuc|pozaszpitaln/i.test(text)) return "curb65";
     if (/qsofa|seps/i.test(text)) return "qsofa";
-    if (/news2|news|wczesn.*ostrzeg/i.test(text)) return "news2";
+    if (/glasgow-blatchford|\bgbs\b|krwawieni.*górnego|ugib/i.test(text)) return "gbs";
+    if (/\bheart\b|hs-ctn|ostry zespół wieńcow|\bacs\b/i.test(text) && !isPed) return "heart";
+    if (/alvarado|\bpas\b|wyrostk|appendicit|prawym dole biodrow/i.test(text)) return isPed ? "pas" : "alvarado";
+    if (/has-bled|hasbled/i.test(text)) return "hasbled";
+    if (/cha2ds2|migotani.*przedsionk/i.test(text)) return "cha2ds2va";
+    if (/abcd2|\btia\b|przemijając.*niedokrwien/i.test(text) && !isPed) return "abcd2";
+    if (/nihss|kod udar|reperfuzj|tromboliz|trombektom/i.test(text) && !isPed) return "nihss";
+    if (/news2|news|wczesn.*ostrzeg/i.test(text) && !isPed) return "news2";
     if (/pews|pediatr.*wczesn/i.test(text)) return "pews";
-    if (/gcs|glasgow/i.test(text)) return "gcs";
+    if (/pgcs|pediatryczn.*gcs|pediatryczn.*glasgow/i.test(text)) return "pgcs";
+    if (/gcs|glasgow/i.test(text)) return isPed ? "pgcs" : "gcs";
     return null;
   }
 
@@ -730,6 +740,15 @@
         return isLikely
           ? /prawdopodobn|wysok|tkpa|angio|\btak\b|\+|>4/.test(lbl)
           : /mało|nisk|d-dimer|dimer|\bnie\b|ujemn|perc|<=4|≤4/.test(lbl);
+      });
+    }
+    if (scoreKey === "perc") {
+      const isPositive = total >= 1;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isPositive
+          ? /d-dimer|dimer|badani|dodatn|\btak\b|≥1|>=1/.test(lbl)
+          : /wyklucz|ujemn|bez badań|\bnie\b|0/.test(lbl);
       });
     }
     if (scoreKey === "curb65") {
@@ -750,22 +769,51 @@
           : /nisk|stabiln|\bnie\b|<2/.test(lbl);
       });
     }
+    if (scoreKey === "alvarado" || scoreKey === "pas") {
+      const isHigh = scoreKey === "pas" ? total >= 4 : total >= 5;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isHigh
+          ? /chirurg|obraz|usg|tk|wysok|pośredni|\btak\b/.test(lbl)
+          : /nisk|obserwac|wypis|\bnie\b/.test(lbl);
+      });
+    }
+    if (scoreKey === "cha2ds2va") {
+      const needsOac = total >= 1;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return needsOac
+          ? /antykoagul|oac|noac|wysok|\btak\b/.test(lbl)
+          : /brak|nisk|\bnie\b/.test(lbl);
+      });
+    }
+    if (scoreKey === "hasbled") {
+      const isHigh = total >= 3;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isHigh
+          ? /wysok|ryzyk|modyfik|\btak\b|≥3/.test(lbl)
+          : /nisk|standard|\bnie\b|<3/.test(lbl);
+      });
+    }
+    if (scoreKey === "abcd2") {
+      const isHigh = total >= 4;
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        return isHigh
+          ? /piln|wysok|hospitaliz|\btak\b|≥4/.test(lbl)
+          : /nisk|ambulat|\bnie\b|<4/.test(lbl);
+      });
+    }
     return null;
   }
 
-  function renderInlineCalcHTML(scoreKey, n, outgoing) {
-    if (!scoreKey || !["wellspe", "curb65", "qsofa"].includes(scoreKey)) return "";
-    const calcLabels = {
-      wellspe: "Wells dla zatorowości płucnej (PE)",
-      curb65: "Skala ciężkości CURB-65",
-      qsofa: "qSOFA — szybka ocena sepsy",
-    };
-
-    const existing = visitSession.calculators.find((c) => c.key === scoreKey);
-    let itemsHTML = "";
-
-    if (scoreKey === "wellspe") {
-      const items = [
+  const INLINE_CALC_DEFS = {
+    wellspe: {
+      title: "Wells dla zatorowości płucnej (PE)",
+      max: "12.5",
+      isHigh: (t) => t > 4,
+      items: [
         { id: "peMostLikely", label: "Alternatywne rozpoznanie mniej prawdopodobne niż ZP (+3.0)", pts: 3.0 },
         { id: "dvtSigns", label: "Kliniczne objawy DVT (obrzęk, bolesność łydki) (+3.0)", pts: 3.0 },
         { id: "hr", label: "Tachykardia: częstość serca > 100/min (+1.5)", pts: 1.5 },
@@ -773,57 +821,143 @@
         { id: "previousVte", label: "Przebyty udokumentowany ZP lub DVT (+1.5)", pts: 1.5 },
         { id: "hemoptysis", label: "Krwioplucie (+1.0)", pts: 1.0 },
         { id: "malignancy", label: "Choroba nowotworowa leczona obecnie/ostatnie 6 mies (+1.0)", pts: 1.0 },
-      ];
-      itemsHTML = items
-        .map((it) => {
-          const checked = checkedVars.has(`calc-${scoreKey}-${it.id}`);
-          return `<label class="inline-calc-item">
-            <input type="checkbox" data-calc-item="${it.id}" data-calc-key="${scoreKey}" data-calc-pts="${it.pts}" ${checked ? "checked" : ""}>
-            <span>${escape(it.label)}</span>
-          </label>`;
-        })
-        .join("");
-    } else if (scoreKey === "curb65") {
-      const items = [
+      ],
+    },
+    perc: {
+      title: "Reguła PERC — wykluczenie ZP przy małym ryzyku",
+      max: "8",
+      isHigh: (t) => t >= 1,
+      items: [
+        { id: "age50", label: "Wiek ≥ 50 lat (+1)", pts: 1 },
+        { id: "hr100", label: "Tętno (HR) ≥ 100/min (+1)", pts: 1 },
+        { id: "spo295", label: "SpO₂ < 95% na powietrzu atmosferycznym (+1)", pts: 1 },
+        { id: "legSwelling", label: "Jednostronny obrzęk kończyny dolnej (+1)", pts: 1 },
+        { id: "hemoptysis", label: "Krwioplucie (+1)", pts: 1 },
+        { id: "surgeryTrauma", label: "Niedawny uraz lub zabieg operacyjny ≤ 4 tyg. (+1)", pts: 1 },
+        { id: "prevVte", label: "Przebyta ZP lub ZŻG w wywiadzie (+1)", pts: 1 },
+        { id: "hormones", label: "Stosowanie egzogennych estrogenów (OC / HTZ) (+1)", pts: 1 },
+      ],
+    },
+    curb65: {
+      title: "Skala ciężkości CURB-65",
+      max: "5",
+      isHigh: (t) => t >= 2,
+      items: [
         { id: "confusion", label: "Confusion: Nowe zaburzenia świadomości (AMTS ≤ 8)", pts: 1 },
         { id: "urea", label: "Urea: Mocznik > 7 mmol/l (BUN > 19 mg/dl)", pts: 1 },
         { id: "rr", label: "Respiratory rate: Częstość oddechów ≥ 30/min", pts: 1 },
         { id: "bp", label: "Blood pressure: SBP < 90 mmHg lub DBP ≤ 60 mmHg", pts: 1 },
         { id: "age", label: "Age: Wiek pacjenta ≥ 65 lat", pts: 1 },
-      ];
-      itemsHTML = items
-        .map((it) => {
-          const checked = checkedVars.has(`calc-${scoreKey}-${it.id}`);
-          return `<label class="inline-calc-item">
-            <input type="checkbox" data-calc-item="${it.id}" data-calc-key="${scoreKey}" data-calc-pts="${it.pts}" ${checked ? "checked" : ""}>
-            <span>${escape(it.label)}</span>
-          </label>`;
-        })
-        .join("");
-    } else if (scoreKey === "qsofa") {
-      const items = [
+      ],
+    },
+    qsofa: {
+      title: "qSOFA — szybka ocena sepsy",
+      max: "3",
+      isHigh: (t) => t >= 2,
+      items: [
         { id: "rr", label: "Częstość oddechów ≥ 22/min (+1)", pts: 1 },
         { id: "ams", label: "Zaburzenia świadomości / GCS < 15 (+1)", pts: 1 },
         { id: "sbp", label: "Skurczowe ciśnienie krwi SBP ≤ 100 mmHg (+1)", pts: 1 },
-      ];
-      itemsHTML = items
-        .map((it) => {
-          const checked = checkedVars.has(`calc-${scoreKey}-${it.id}`);
-          return `<label class="inline-calc-item">
-            <input type="checkbox" data-calc-item="${it.id}" data-calc-key="${scoreKey}" data-calc-pts="${it.pts}" ${checked ? "checked" : ""}>
-            <span>${escape(it.label)}</span>
-          </label>`;
-        })
-        .join("");
-    }
+      ],
+    },
+    alvarado: {
+      title: "Skala Alvarado — ostre zapalenie wyrostka",
+      max: "10",
+      isHigh: (t) => t >= 7,
+      items: [
+        { id: "rlq", label: "Tkliwość uciskowa w prawym dole biodrowym (RLQ) (+2)", pts: 2 },
+        { id: "wbc", label: "Leukocytoza WBC > 10 000/µl (+2)", pts: 2 },
+        { id: "migration", label: "Migracja bólu do prawego dołu biodrowego (+1)", pts: 1 },
+        { id: "anorexia", label: "Jadłowstręt / utrata apetytu (+1)", pts: 1 },
+        { id: "nausea", label: "Nudności lub wymioty (+1)", pts: 1 },
+        { id: "rebound", label: "Objaw Blumberga (bolesność z odbicia w RLQ) (+1)", pts: 1 },
+        { id: "fever", label: "Podwyższona temperatura ≥ 37,3°C (+1)", pts: 1 },
+        { id: "shift", label: "Przesunięcie w lewo / neutrofilia > 75% (+1)", pts: 1 },
+      ],
+    },
+    pas: {
+      title: "Skala PAS — wyrostek robaczkowy u dzieci",
+      max: "10",
+      isHigh: (t) => t >= 7,
+      items: [
+        { id: "rlq", label: "Tkliwość uciskowa w prawym dole biodrowym (RLQ) (+2)", pts: 2 },
+        { id: "wbc", label: "Leukocytoza WBC > 10 000/µl (+2)", pts: 2 },
+        { id: "migration", label: "Migracja bólu do prawego dołu biodrowego (+1)", pts: 1 },
+        { id: "anorexia", label: "Jadłowstręt / utrata apetytu (+1)", pts: 1 },
+        { id: "nausea", label: "Nudności lub wymioty (+1)", pts: 1 },
+        { id: "hopping", label: "Ból w RLQ przy kaszlu, opukiwaniu lub podskakiwaniu (+1)", pts: 1 },
+        { id: "fever", label: "Gorączka ≥ 38,0°C (+1)", pts: 1 },
+        { id: "shift", label: "Neutrofilia > 75% / ANC > 7500/µl (+1)", pts: 1 },
+      ],
+    },
+    cha2ds2va: {
+      title: "CHA₂DS₂-VA (ESC 2024) — ryzyko udaru w AF",
+      max: "8",
+      isHigh: (t) => t >= 2,
+      items: [
+        { id: "chf", label: "C: Niewydolność serca / LVEF ≤ 40% (+1)", pts: 1 },
+        { id: "htn", label: "H: Nadciśnienie tętnicze (+1)", pts: 1 },
+        { id: "age75", label: "A₂: Wiek ≥ 75 lat (+2)", pts: 2 },
+        { id: "dm", label: "D: Cukrzyca (+1)", pts: 1 },
+        { id: "stroke", label: "S₂: Przebyty udar, TIA lub zatorowość (+2)", pts: 2 },
+        { id: "vasc", label: "V: Choroba naczyniowa (MI, PAD, blaszka aorty) (+1)", pts: 1 },
+        { id: "age65", label: "A: Wiek 65–74 lata (+1)", pts: 1 },
+      ],
+    },
+    hasbled: {
+      title: "HAS-BLED — ryzyko krwawienia przy antykoagulacji",
+      max: "9",
+      isHigh: (t) => t >= 3,
+      items: [
+        { id: "htn", label: "H: Niekontrolowane nadciśnienie SBP > 160 mmHg (+1)", pts: 1 },
+        { id: "renal", label: "A: Niewydolność nerek (dializy, Cr > 2,26 mg/dl) (+1)", pts: 1 },
+        { id: "liver", label: "A: Choroba wątroby (marskość, bilirubina > 2× GGN) (+1)", pts: 1 },
+        { id: "stroke", label: "S: Przebyty udar mózgu (+1)", pts: 1 },
+        { id: "bleed", label: "B: Przebyte krwawienie lub skaza/anemia (+1)", pts: 1 },
+        { id: "inr", label: "L: Niestabilny INR (TTR < 60% na VKA) (+1)", pts: 1 },
+        { id: "elderly", label: "E: Wiek > 65 lat (+1)", pts: 1 },
+        { id: "drugs", label: "D: Leki przeciwpłytkowe lub NLPZ (+1)", pts: 1 },
+        { id: "alcohol", label: "D: Alkohol ≥ 8 jednostek/tydzień (+1)", pts: 1 },
+      ],
+    },
+    abcd2: {
+      title: "Skala ABCD² — wczesne ryzyko udaru po TIA",
+      max: "7",
+      isHigh: (t) => t >= 4,
+      items: [
+        { id: "age60", label: "A: Wiek ≥ 60 lat (+1)", pts: 1 },
+        { id: "bp140", label: "B: Ciśnienie ≥ 140/90 mmHg (+1)", pts: 1 },
+        { id: "weakness", label: "C: Jednostronny niedowład (+2)", pts: 2 },
+        { id: "speech", label: "C: Zaburzenia mowy bez niedowładu (+1)", pts: 1 },
+        { id: "dur60", label: "D: Czas trwania objawów ≥ 60 min (+2)", pts: 2 },
+        { id: "dur10", label: "D: Czas trwania objawów 10–59 min (+1)", pts: 1 },
+        { id: "dm", label: "D: Cukrzyca w wywiadzie (+1)", pts: 1 },
+      ],
+    },
+  };
+
+  function renderInlineCalcHTML(scoreKey, n, outgoing) {
+    const def = INLINE_CALC_DEFS[scoreKey];
+    if (!def) return "";
+
+    const existing = visitSession.calculators.find((c) => c.key === scoreKey);
+    const itemsHTML = def.items
+      .map((it) => {
+        const checked = checkedVars.has(`calc-${scoreKey}-${it.id}`);
+        return `<label class="inline-calc-item">
+          <input type="checkbox" data-calc-item="${it.id}" data-calc-key="${scoreKey}" data-calc-pts="${it.pts}" ${checked ? "checked" : ""}>
+          <span>${escape(it.label)}</span>
+        </label>`;
+      })
+      .join("");
 
     const currentTotal = existing ? existing.total : 0;
-    const isHigh = scoreKey === "wellspe" ? currentTotal > 4 : currentTotal >= 2;
+    const isHigh = def.isHigh(currentTotal);
 
     return `
     <div class="inline-calc-box" data-calc-box="${scoreKey}">
       <div class="inline-calc-header">
-        <span class="inline-calc-title">Szybka ocena: ${calcLabels[scoreKey]}</span>
+        <span class="inline-calc-title">Szybka ocena: ${escape(def.title)}</span>
         <span class="inline-calc-score-badge" id="inline-score-badge-${scoreKey}" data-level="${isHigh ? "high" : "low"}">Wynik: ${currentTotal} pkt</span>
       </div>
       <div class="inline-calc-grid">
@@ -853,7 +987,7 @@
       return;
     }
     const scoreKey = findNodeScore(n);
-    const calculator = scoreKey || ["gcs", "news2", "pews", "curb65", "qsofa", "wellspe"].find((key) =>
+    const calculator = scoreKey || ["gcs", "pgcs", "news2", "pews", "curb65", "qsofa", "wellspe", "perc", "heart", "gbs", "alvarado", "pas", "cha2ds2va", "hasbled", "nihss", "abcd2"].find((key) =>
       n.title.toLowerCase().includes(key),
     );
     const outgoing = g.edges.filter((e) => e.from === n.id);
@@ -2508,36 +2642,45 @@
         total += parseFloat(ci.dataset.calcPts || 0);
       });
 
+      const def = INLINE_CALC_DEFS[scoreKey];
       const badge = $(`inline-score-badge-${scoreKey}`);
-      if (badge) {
+      if (badge && def) {
         badge.textContent = `Wynik: ${total} pkt`;
-        const isHigh = scoreKey === "wellspe" ? total > 4 : total >= 2;
-        badge.dataset.level = isHigh ? "high" : "low";
+        badge.dataset.level = def.isHigh(total) ? "high" : "low";
       }
+
+      const nameMap = {
+        wellspe: "Wells PE", perc: "PERC", curb65: "CURB-65", qsofa: "qSOFA",
+        alvarado: "Alvarado", pas: "PAS", cha2ds2va: "CHA₂DS₂-VA", hasbled: "HAS-BLED", abcd2: "ABCD²",
+      };
+      const headlineMap = {
+        wellspe: total > 4 ? "Wysokie prawdopodobieństwo ZP (>4 pkt) — wskazana TKPA" : "Małe prawdopodobieństwo ZP (≤4 pkt) — oznacz D-dimer",
+        perc: total >= 1 ? `PERC dodatni (${total}/8) — oznacz D-dimer` : "PERC ujemny (0/8) — ZP wykluczona bez D-dimerów",
+        curb65: total >= 2 ? "Wskazana hospitalizacja (Grupa 2/3)" : "Niskie ryzyko zgonu (Grupa 1)",
+        qsofa: total >= 2 ? "Wysokie ryzyko sepsy (≥2 pkt)" : "Niskie ryzyko (<2 pkt)",
+        alvarado: total >= 7 ? "Wysokie prawdopodobieństwo zapalenia wyrostka (≥7 pkt)" : total >= 5 ? "Pośrednie ryzyko (5–6 pkt) — obrazowanie" : "Małe prawdopodobieństwo (<5 pkt)",
+        pas: total >= 7 ? "Wysokie prawdopodobieństwo zapalenia wyrostka (PAS ≥7)" : total >= 4 ? "Pośrednie ryzyko (PAS 4–6) — wskazane USG" : "Niskie prawdopodobieństwo (PAS <4)",
+        cha2ds2va: total >= 2 ? "Zalecana antykoagulacja OAC (ESC 2024 Klasa I)" : total === 1 ? "Rozważ antykoagulację OAC (Klasa IIa)" : "Niskie ryzyko (0 pkt) — brak wskazań do OAC",
+        hasbled: total >= 3 ? "Wysokie ryzyko krwawienia (≥3 pkt) — modyfikuj czynniki, nie wstrzymuj OAC" : "Niskie / umiarkowane ryzyko krwawienia (<3 pkt)",
+        abcd2: total >= 4 ? `Podwyższone wczesne ryzyko udaru (ABCD² ${total}/7) — pilna ścieżka TIA` : `ABCD² ${total}/7 — uwaga: każde TIA wymaga pilnej oceny specjalistycznej <24h`,
+      };
+      const actionMap = {
+        wellspe: total > 4 ? "Wykonaj angio-TK klatki piersiowej (TKPA)" : "Oznacz D-dimer; jeśli ujemny, wyklucz ZP",
+        perc: total >= 1 ? "Nie można wykluczyć ZP regułą PERC — oznacz D-dimer" : "Brak wskazań do D-dimerów przy niskim ryzyku wyjściowym",
+        alvarado: total >= 5 ? "Konsultacja chirurgiczna i diagnostyka obrazowa (USG / TK)" : "Obserwacja i kontrola kliniczna",
+        pas: total >= 4 ? "USG jamy brzusznej i konsultacja chirurgii dziecięcej" : "Obserwacja i ponowna ocena",
+        cha2ds2va: total >= 1 ? "Włącz lub rozważ NOAC/DOAC zgodnie z ESC 2024" : "Brak wskazań do przewlekłej antykoagulacji",
+        hasbled: total >= 3 ? "Skoryguj odwracalne czynniki ryzyka krwawienia i kontroluj częściej" : "Standardowe monitorowanie leczenia",
+        abcd2: "Pilne leczenie przeciwpłytkowe i diagnostyka TIA w ciągu 24 h (NICE NG128)",
+      };
 
       const calcData = {
         key: scoreKey,
-        name: scoreKey === "wellspe" ? "Wells PE" : scoreKey === "curb65" ? "CURB-65" : "qSOFA",
+        name: nameMap[scoreKey] || scoreKey.toUpperCase(),
         total: total,
-        max: scoreKey === "wellspe" ? "12.5" : scoreKey === "curb65" ? "5" : "3",
-        headline:
-          scoreKey === "wellspe"
-            ? total > 4
-              ? "Wysokie prawdopodobieństwo ZP (>4 pkt) — wskazana TKPA"
-              : "Małe prawdopodobieństwo ZP (≤4 pkt) — oznacz D-dimer"
-            : scoreKey === "curb65"
-              ? total >= 2
-                ? "Wskazana hospitalizacja (Grupa 2/3)"
-                : "Niskie ryzyko zgonu (Grupa 1)"
-              : total >= 2
-                ? "Wysokie ryzyko sepsy (≥2 pkt)"
-                : "Niskie ryzyko (<2 pkt)",
-        action:
-          scoreKey === "wellspe"
-            ? total > 4
-              ? "Wykonaj angio-TK klatki piersiowej (TKPA)"
-              : "Oznacz D-dimer; jeśli ujemny, wyklucz ZP"
-            : "",
+        max: def ? def.max : "",
+        headline: headlineMap[scoreKey] || `Wynik: ${total} pkt`,
+        action: actionMap[scoreKey] || "",
         timestamp: Date.now(),
       };
       const exIdx = visitSession.calculators.findIndex((c) => c.key === scoreKey);
