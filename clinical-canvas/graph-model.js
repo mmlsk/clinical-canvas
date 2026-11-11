@@ -23,6 +23,29 @@
     const spec = m[c],
       prefix = `${m.id}.${c}.`,
       src = spec.src || [];
+    const subq = spec.subq || {
+      title: "Weryfikacja kryteriów eskalacji",
+      body: spec.logic || "",
+      red: spec.red || [],
+      tests: spec.yes?.tests || [],
+      criteria: [],
+    };
+    const subyes = spec.subyes || {
+      title: "Ścieżka wysokiego ryzyka / interwencja",
+      type: "urgent",
+      body: spec.urgent || "",
+      tests: spec.yes?.tests || [],
+    };
+    const subno = spec.subno || {
+      title: "Obserwacja kierunkowa i kontrola",
+      body: spec.yes?.body || "",
+      tests: spec.yes?.tests || [],
+    };
+    const alt = spec.alt || {
+      title: "Diagnostyka różnicowa i plan alternatywny",
+      body: spec.no?.body || "",
+      tests: spec.no?.tests || [],
+    };
     const n = (id, type, x, y, title, fields = {}) => ({
       id: prefix + id,
       type,
@@ -79,7 +102,37 @@
         pit: spec.pit,
         logic: spec.logic,
       }),
-      n("exit", "outcome", 260, 548, "Ocena wyniku i dalszy plan", {
+      n("subq", "decision", 0, 528, subq.title, {
+        body: subq.body,
+        red: subq.red || spec.red,
+        tests: subq.tests || spec.yes?.tests,
+        criteria: subq.criteria || [],
+        pit: spec.pit,
+        logic: spec.logic,
+      }),
+      n("subyes", subyes.type || "test", -124, 660, subyes.title, {
+        body: subyes.body,
+        tests: subyes.tests || [],
+        red: subyes.red || [],
+        dispo: subyes.dispo || spec.dispo,
+        pit: spec.pit,
+        logic: spec.logic,
+      }),
+      n("subno", subno.type || "test", 124, 660, subno.title, {
+        body: subno.body,
+        tests: subno.tests || [],
+        dispo: subno.dispo || spec.dispo,
+        pit: spec.pit,
+        logic: spec.logic,
+      }),
+      n("alt", alt.type || "test", 520, 528, alt.title, {
+        body: alt.body,
+        tests: alt.tests || [],
+        dispo: alt.dispo || spec.dispo,
+        pit: spec.pit,
+        logic: spec.logic,
+      }),
+      n("exit", "outcome", 260, 792, "Ocena wyniku i dalszy plan", {
         body: "Po badaniu lub interwencji wróć do oceny chorego. Ujemny wynik ma znaczenie tylko w populacji, dla której test jest właściwy.",
         dispo: spec.dispo,
         pit: spec.pit,
@@ -102,8 +155,13 @@
         edge("red", "question", "NIE"),
         edge("question", "yes", "TAK"),
         edge("question", "no", "NIE"),
-        edge("yes", "exit", ""),
-        edge("no", "exit", ""),
+        edge("yes", "subq", ""),
+        edge("subq", "subyes", subq.yesLabel || "TAK"),
+        edge("subq", "subno", subq.noLabel || "NIE"),
+        edge("subyes", "exit", ""),
+        edge("subno", "exit", ""),
+        edge("no", "alt", ""),
+        edge("alt", "exit", ""),
       ],
     };
   }
@@ -286,6 +344,59 @@
     return validate({ schema_version: 2, graphs: { "legacy.all": g } });
   }
 
+  function rebase(saved, base = defaults()) {
+    if (!saved?.graphs || !base?.graphs) return saved;
+    for (const [key, g] of Object.entries(saved.graphs)) {
+      const baseline = base.graphs[key];
+      if (!baseline) continue;
+      g.nodes = g.nodes.map((n) => {
+        const fresh = baseline.nodes.find((b) => b.id === n.id);
+        return !n.custom && fresh ? { ...clone(fresh), x: n.x, y: n.y } : n;
+      });
+      const existingIds = new Set(g.nodes.map((n) => n.id));
+      const hasLegacyEndpoints =
+        existingIds.has(`${key}.yes`) &&
+        existingIds.has(`${key}.no`) &&
+        existingIds.has(`${key}.exit`);
+      const hasLegacyDirectEdges = g.edges.some(
+        (e) => e.id === `${key}.yes-exit` || e.id === `${key}.no-exit`,
+      );
+      if (hasLegacyEndpoints && hasLegacyDirectEdges) {
+        const missingNodes = baseline.nodes.filter((b) => !existingIds.has(b.id));
+        if (missingNodes.length) {
+          const exitIdx = g.nodes.findIndex((n) => n.id === `${key}.exit`);
+          const clonedMissing = missingNodes.map((b) => clone(b));
+          if (exitIdx >= 0) {
+            g.nodes.splice(exitIdx, 0, ...clonedMissing);
+          } else {
+            g.nodes.push(...clonedMissing);
+          }
+          for (const m of clonedMissing) existingIds.add(m.id);
+        }
+        const exitNode = g.nodes.find((n) => n.id === `${key}.exit`);
+        const baseExit = baseline.nodes.find((b) => b.id === `${key}.exit`);
+        if (exitNode && baseExit && !exitNode.custom && exitNode.y < baseExit.y) {
+          exitNode.y = baseExit.y;
+        }
+        g.edges = g.edges.filter(
+          (e) => e.id !== `${key}.yes-exit` && e.id !== `${key}.no-exit`,
+        );
+        const existingEdgeIds = new Set(g.edges.map((e) => e.id));
+        for (const be of baseline.edges) {
+          if (
+            !existingEdgeIds.has(be.id) &&
+            existingIds.has(be.from) &&
+            existingIds.has(be.to)
+          ) {
+            g.edges.push(clone(be));
+            existingEdgeIds.add(be.id);
+          }
+        }
+      }
+    }
+    return saved;
+  }
+
   function mergeWithDefaults(imported, modules = D?.modules, revision = D?.revision) {
     return validate(
       {
@@ -381,6 +492,7 @@
     defaults,
     validate,
     migrate,
+    rebase,
     mergeWithDefaults,
     ensureStr,
     list,

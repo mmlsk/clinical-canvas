@@ -108,19 +108,9 @@
       const raw = await window.CanvasPersistence.read();
       if (raw) {
         const saved = raw.schema_version === 2 ? validate(raw) : migrate(raw);
-        // Rebase untouched clinical content on updated evidence; preserve user edits and geometry.
+        // Rebase untouched clinical content and subalgorithm topology on updated evidence; preserve user edits and geometry.
         if (raw.content_revision !== D.revision) {
-          const base = defaults();
-          for (const [key, g] of Object.entries(saved.graphs)) {
-            const baseline = base.graphs[key];
-            if (!baseline) continue;
-            g.nodes = g.nodes.map((n) => {
-              const fresh = baseline.nodes.find((b) => b.id === n.id);
-              return !n.custom && fresh
-                ? { ...clone(fresh), x: n.x, y: n.y }
-                : n;
-            });
-          }
+          M.rebase(saved, defaults());
         }
         store = mergeWithDefaults(saved);
         $("save-state").textContent = window.CanvasPersistence.mode === "offline" ? "Wczytano zapis lokalny" : "Wczytano zapis serwerowy";
@@ -2769,6 +2759,24 @@
     if (/drgawk|padaczk|stan padaczkowy/.test(text)) {
       items.push({ name: "Midazolam", dose: `${ed.midazolamSeizures.doseMg} mg (${ed.midazolamSeizures.volumeMl} ml)`, route: "b.u.c. / i.m.", notes: ed.midazolamSeizures.notes });
       items.push({ name: "Diazepam wlewka doodbytnicza", dose: `${ed.diazepamSeizures.doseMg} mg`, route: "p.r.", notes: ed.diazepamSeizures.notes });
+      items.push({ name: "Lewetiracetam (Keppra II rzut)", dose: `${ed.levetiracetamSeizures.doseMg} mg`, route: "i.v. wlew 10 min", notes: ed.levetiracetamSeizures.notes });
+    }
+    if (/arytmi|svt|częstoskurcz|kołatan/.test(text)) {
+      items.push({ name: "Adenozyna (SVT)", dose: `I dawka ${ed.adenosineSVT.doseMgFirst} mg, II dawka ${ed.adenosineSVT.doseMgSecond} mg`, route: "i.v. szybki bolus", notes: ed.adenosineSVT.notes });
+      items.push({ name: "Amiodaron", dose: `300 mg (dzieci ${Math.min(300, Math.round(weightKg * 5))} mg)`, route: "i.v. wlew", notes: "We wlewie w 5% Glukozie przez 20-60 min." });
+    }
+    if (/uraz|krwotok|txa|politraum/.test(text)) {
+      items.push({ name: "Kwas traneksamowy (TXA)", dose: `${ed.tranexamicAcidTrauma.doseMg} mg`, route: "i.v. wlew 10 min", notes: ed.tranexamicAcidTrauma.notes });
+    }
+    if (/hiperkaliem|potas|kation/.test(text)) {
+      items.push({ name: "Glukonian wapnia 10%", dose: ed.calciumGluconateHyperkalemia.doseDescription, route: "i.v. powoli", notes: ed.calciumGluconateHyperkalemia.notes });
+      items.push({ name: "Insulina + Glukoza (Hiperkaliemia)", dose: ed.insulinGlucoseHyperkalemia.doseDescription, route: "i.v. wlew 15-30 min", notes: ed.insulinGlucoseHyperkalemia.notes });
+    }
+    if (/zatruci|toksy|opioid|nalokson/.test(text)) {
+      items.push({ name: "Nalokson", dose: `${ed.naloxonePoisoning.doseMgFirst} mg`, route: "i.v. / i.m. / i.n.", notes: ed.naloxonePoisoning.notes });
+    }
+    if (/torsade|rzucawk|tężyczk|eclampsia|mgso4/.test(text)) {
+      items.push({ name: "Siarczan magnezu 20%", dose: `${ed.magnesiumSulfateEmergency.doseMg} mg`, route: "i.v.", notes: ed.magnesiumSulfateEmergency.notes });
     }
     if (/hipoglikem|glukoz|cukrzyc/.test(text)) {
       items.push({ name: "Glukoza i.v.", dose: ed.glucoseHypoglycemia.doseDescription, route: "i.v.", notes: ed.glucoseHypoglycemia.notes });
@@ -2971,6 +2979,62 @@
         dose: d.fluidResuscitation.doseDescription,
         route: d.fluidResuscitation.route,
         notes: d.fluidResuscitation.notes,
+      },
+      {
+        title: "Adenozyna (SVT / Częstoskurcz)",
+        sub: d.adenosineSVT.indication,
+        prep: d.adenosineSVT.prep,
+        dose: `I dawka: ${d.adenosineSVT.doseMgFirst} mg, II dawka: ${d.adenosineSVT.doseMgSecond} mg`,
+        route: d.adenosineSVT.route,
+        notes: d.adenosineSVT.notes,
+      },
+      {
+        title: "Lewetiracetam (Keppra - Stan padaczkowy)",
+        sub: d.levetiracetamSeizures.indication,
+        prep: d.levetiracetamSeizures.prep,
+        dose: `${d.levetiracetamSeizures.doseMg} mg`,
+        route: d.levetiracetamSeizures.route,
+        notes: d.levetiracetamSeizures.notes,
+      },
+      {
+        title: "Kwas traneksamowy (TXA - Uraz/Krwotok)",
+        sub: d.tranexamicAcidTrauma.indication,
+        prep: d.tranexamicAcidTrauma.prep,
+        dose: `${d.tranexamicAcidTrauma.doseMg} mg`,
+        route: d.tranexamicAcidTrauma.route,
+        notes: d.tranexamicAcidTrauma.notes,
+      },
+      {
+        title: "Glukonian wapnia 10% (Hiperkaliemia)",
+        sub: d.calciumGluconateHyperkalemia.indication,
+        prep: d.calciumGluconateHyperkalemia.prep,
+        dose: d.calciumGluconateHyperkalemia.doseDescription,
+        route: d.calciumGluconateHyperkalemia.route,
+        notes: d.calciumGluconateHyperkalemia.notes,
+      },
+      {
+        title: "Insulina + Glukoza (Hiperkaliemia)",
+        sub: d.insulinGlucoseHyperkalemia.indication,
+        prep: d.insulinGlucoseHyperkalemia.prep,
+        dose: d.insulinGlucoseHyperkalemia.doseDescription,
+        route: d.insulinGlucoseHyperkalemia.route,
+        notes: d.insulinGlucoseHyperkalemia.notes,
+      },
+      {
+        title: "Nalokson (Zatrucie opioidami)",
+        sub: d.naloxonePoisoning.indication,
+        prep: d.naloxonePoisoning.prep,
+        dose: `${d.naloxonePoisoning.doseMgFirst} mg`,
+        route: d.naloxonePoisoning.route,
+        notes: d.naloxonePoisoning.notes,
+      },
+      {
+        title: "Siarczan magnezu (MgSO4 20%)",
+        sub: d.magnesiumSulfateEmergency.indication,
+        prep: d.magnesiumSulfateEmergency.prep,
+        dose: `${d.magnesiumSulfateEmergency.doseMg} mg`,
+        route: d.magnesiumSulfateEmergency.route,
+        notes: d.magnesiumSulfateEmergency.notes,
       },
     ];
 

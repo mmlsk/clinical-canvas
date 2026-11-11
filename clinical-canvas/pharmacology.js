@@ -110,6 +110,60 @@
           : `500 ml w bolusie w 15 min; w sepsie 30 ml/kg = ${+(w * 30).toFixed(0)} ml w ciągu pierwszych 3h`,
         notes: "U dzieci z kardiomiopatią lub ciężkim urazem głowy ostrożnie 10 ml/kg. Oceniać objawy przewodnienia (wątroba, trzeszczenia).",
       },
+      adenosineSVT: {
+        indication: "Częstoskurcz nadkomorowy (SVT / AVNRT / AVRT)",
+        route: "i.v. szybki bolus + 20 ml 0.9% NaCl",
+        prep: "Ampułka 6 mg / 2 ml (3 mg/ml)",
+        doseMgFirst: child ? Math.min(6, +(w * 0.1).toFixed(1)) : 6,
+        doseMgSecond: child ? Math.min(12, +(w * 0.2).toFixed(1)) : 12,
+        notes: "I dawka: 6 mg (dzieci 0.1 mg/kg). W razie braku efektu po 1-2 min II dawka: 12 mg (dzieci 0.2 mg/kg). Zapis EKG w trakcie podawania.",
+      },
+      levetiracetamSeizures: {
+        indication: "Stan padaczkowy oporny na BZD (II rzut)",
+        route: "i.v. wlew w ciągu 5-10 min",
+        prep: "Ampułka 500 mg / 5 ml (100 mg/ml)",
+        doseMg: child ? Math.min(3000, +(w * 50).toFixed(0)) : Math.min(4000, Math.max(2000, +(w * 40).toFixed(0))),
+        notes: "Dawka 40-60 mg/kg (dzieci 50-60 mg/kg, max 3000 mg; dorośli 3000-4000 mg w 100 ml 0.9% NaCl w 10 min).",
+      },
+      tranexamicAcidTrauma: {
+        indication: "Masywny krwotok / uraz wielonarządowy (ATLS / CRASH-2)",
+        route: "i.v. wlew w ciągu 10 min",
+        prep: "Ampułka 1 g / 10 ml (100 mg/ml)",
+        doseMg: child ? Math.min(1000, +(w * 15).toFixed(0)) : 1000,
+        notes: "Podać jak najszybciej, bezwzględnie <3h od urazu. Dorośli 1 g w 10 min, potem 1 g wlew w 8h; dzieci 15-20 mg/kg (max 1 g).",
+      },
+      calciumGluconateHyperkalemia: {
+        indication: "Ciężka hiperkaliemia (stabilizacja błony kardiomiocytów)",
+        route: "i.v. powoli w ciągu 5-10 min pod kontrolą EKG",
+        prep: "Glukonian wapnia 10% (10 ml = 1 g / 2.23 mmol Ca²⁺)",
+        doseDescription: child
+          ? `${+(w * 0.5).toFixed(1)} ml/kg 10% Ca-gluconate (max 10 ml)`
+          : "10-20 ml 10% glukonianu wapnia i.v. powoli",
+        notes: "Działa natychmiast (1-3 min), nie obniża stężenia K+. Powtórzyć po 5-10 min przy utrzymywaniu się zmian w EKG.",
+      },
+      insulinGlucoseHyperkalemia: {
+        indication: "Hiperkaliemia (przesunięcie K⁺ do komórek)",
+        route: "i.v. wlew w ciągu 15-30 min",
+        prep: "Insulina krótzkodziałająca 10 j. w 50 ml 20% Glukozy (lub 100 ml 10% Glukozy)",
+        doseDescription: child
+          ? `0.1 j./kg insuliny + 0.5 g/kg glukozy (5 ml/kg 10% glukozy)`
+          : "10 j. insuliny krótzkodziałającej + 50 ml 20% glukozy i.v.",
+        notes: "Obniża K⁺ o ok. 0.6-1.0 mmol/l po 15-30 min. Ścisła kontrola glikemii po 30, 60 i 120 min.",
+      },
+      naloxonePoisoning: {
+        indication: "Zatrucie opioidami z depresją oddechową",
+        route: "i.v. / i.m. / i.n. / s.c.",
+        prep: "Ampułka 0.4 mg / 1 ml",
+        doseMgFirst: child ? Math.min(0.4, Math.max(0.01, +(w * 0.01).toFixed(2))) : 0.4,
+        notes: "Miareczkować dawkami 0.1-0.4 mg i.v. co 2-3 min do powrotu prawidłowego oddechu (częstość >10/min), niekoniecznie pełnej przytomności.",
+      },
+      magnesiumSulfateEmergency: {
+        indication: "Torsades de Pointes / Rzucawka / Ciężka astma",
+        route: "i.v. powolny wlew",
+        prep: "Siarczan magnezu 20% (2 g / 10 ml = 200 mg/ml)",
+        doseMg: child ? Math.min(2000, +(w * 40).toFixed(0)) : 2000,
+        notes: "W Torsades: 2 g i.v. w 1-2 min (dzieci 25-50 mg/kg, max 2 g). W rzucawce: 4 g i.v. w 10-15 min, potem 1 g/h. W astmie: 2 g w 20 min.",
+      },
     };
   }
 

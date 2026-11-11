@@ -18,13 +18,13 @@ const P = ctx.ClinicalPharmacology;
 const Diag = ctx.ClinicalDiagnostics;
 const Safety = ctx.ClinicalSafety;
 
-test("defaults(): generates all 24 baseline graphs and 168 nodes", () => {
+test("defaults(): generates all 38 baseline graphs and 418 nodes", () => {
   const defs = M.defaults();
   assert.equal(defs.schema_version, 2);
   assert.equal(defs.content_revision, D.revision);
 
   const keys = Object.keys(defs.graphs);
-  assert.equal(keys.length, 24); // 12 modules x 2 cohorts (a, p)
+  assert.equal(keys.length, 38); // 19 modules x 2 cohorts (a, p)
 
   let nodeCount = 0;
   for (const m of D.modules) {
@@ -32,23 +32,28 @@ test("defaults(): generates all 24 baseline graphs and 168 nodes", () => {
       const g = defs.graphs[`${m.id}.${c}`];
       assert.ok(g, `Missing graph ${m.id}.${c}`);
       assert.equal(g.cohort, c);
-      assert.equal(g.nodes.length, 7);
-      assert.equal(g.edges.length, 7);
+      assert.equal(g.nodes.length, 11);
+      assert.equal(g.edges.length, 12);
       nodeCount += g.nodes.length;
     }
   }
-  assert.equal(nodeCount, 168);
+  assert.equal(nodeCount, 418);
 
   const validated = M.validate(defs);
-  assert.equal(Object.keys(validated.graphs).length, 24);
+  assert.equal(Object.keys(validated.graphs).length, 38);
 });
 
-test("makeGraph(): constructs clean 7-node standard pathway", () => {
+test("makeGraph(): constructs clean 11-node standard pathway with subalgorithms", () => {
   const m = D.modules[0];
   const g = M.makeGraph(m, "a");
   assert.equal(g.cohort, "a");
   assert.equal(g.nodes[0].id, `${m.id}.a.start`);
   assert.equal(g.nodes[0].type, "assessment");
+
+  const subq = g.nodes.find((n) => n.id === `${m.id}.a.subq`);
+  assert.ok(subq);
+  assert.equal(subq.type, "decision");
+  assert.ok(subq.data.criteria.length >= 2);
 
   const edgeTargets = g.edges.map((e) => [e.from.replace(`${m.id}.a.`, ""), e.to.replace(`${m.id}.a.`, "")]);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(edgeTargets)), [
@@ -57,8 +62,13 @@ test("makeGraph(): constructs clean 7-node standard pathway", () => {
     ["red", "question"],
     ["question", "yes"],
     ["question", "no"],
-    ["yes", "exit"],
-    ["no", "exit"],
+    ["yes", "subq"],
+    ["subq", "subyes"],
+    ["subq", "subno"],
+    ["subyes", "exit"],
+    ["subno", "exit"],
+    ["no", "alt"],
+    ["alt", "exit"],
   ]);
 });
 
@@ -247,39 +257,105 @@ test("mergeWithDefaults(): merges customized graphs over baseline defaults", () 
 
   const merged = M.mergeWithDefaults(customStore);
   assert.equal(merged.schema_version, 2);
-  assert.equal(Object.keys(merged.graphs).length, 24);
+  assert.equal(Object.keys(merged.graphs).length, 38);
 
   // chest.a should be customized
   assert.equal(merged.graphs["chest.a"].title, "Zmodyfikowany ból klatki");
   assert.equal(merged.graphs["chest.a"].nodes[0].id, "custom-node-1");
 
   // overview.a should remain original default
-  assert.equal(merged.graphs["overview.a"].nodes.length, 7);
+  assert.equal(merged.graphs["overview.a"].nodes.length, 11);
+});
+
+test("rebase(): upgrades legacy 7-node saved graphs to 11-node revision while preserving custom edits", () => {
+  const base = M.defaults();
+  // Construct a legacy 7-node saved state with one custom node and one edited baseline node
+  const legacyChestNodes = base.graphs["chest.a"].nodes
+    .filter((n) => !["chest.a.subq", "chest.a.subyes", "chest.a.subno", "chest.a.alt"].includes(n.id))
+    .map((n) => ({ ...JSON.parse(JSON.stringify(n)), y: n.id === "chest.a.exit" ? 548 : n.y }));
+  const yesNode = legacyChestNodes.find((n) => n.id === "chest.a.yes");
+  yesNode.title = "Moja własna ścieżka troponiny";
+  yesNode.custom = true;
+  legacyChestNodes.push({
+    id: "custom-note-99",
+    title: "Lokalny telefon do hemodynamiki",
+    type: "note",
+    x: 780,
+    y: 132,
+    cohort: "a",
+    custom: true,
+    data: { body: "Wew. 1234" },
+  });
+
+  const saved = {
+    schema_version: 2,
+    content_revision: "2026-11-01-r2",
+    graphs: {
+      "chest.a": {
+        title: "Ból w klatce piersiowej",
+        cohort: "a",
+        nodes: legacyChestNodes,
+        edges: [
+          { id: "chest.a.start-red", from: "chest.a.start", to: "chest.a.red", label: "" },
+          { id: "chest.a.red-urgent", from: "chest.a.red", to: "chest.a.urgent", label: "TAK" },
+          { id: "chest.a.red-question", from: "chest.a.red", to: "chest.a.question", label: "NIE" },
+          { id: "chest.a.question-yes", from: "chest.a.question", to: "chest.a.yes", label: "TAK" },
+          { id: "chest.a.question-no", from: "chest.a.question", to: "chest.a.no", label: "NIE" },
+          { id: "chest.a.yes-exit", from: "chest.a.yes", to: "chest.a.exit", label: "" },
+          { id: "chest.a.no-exit", from: "chest.a.no", to: "chest.a.exit", label: "" },
+          { id: "custom-edge-99", from: "chest.a.urgent", to: "custom-note-99", label: "Kontakt" },
+        ],
+      },
+    },
+  };
+
+  M.rebase(saved, base);
+  const rebased = saved.graphs["chest.a"];
+
+  // 11 baseline nodes + 1 custom node = 12 nodes
+  assert.equal(rebased.nodes.length, 12);
+  // Custom edited baseline node preserved
+  assert.equal(rebased.nodes.find((n) => n.id === "chest.a.yes").title, "Moja własna ścieżka troponiny");
+  // Custom note node preserved
+  assert.ok(rebased.nodes.some((n) => n.id === "custom-note-99"));
+  // New subalgorithm nodes injected
+  for (const subId of ["chest.a.subq", "chest.a.subyes", "chest.a.subno", "chest.a.alt"]) {
+    assert.ok(rebased.nodes.some((n) => n.id === subId), `Missing rebased node ${subId}`);
+  }
+  // Exit node moved down to avoid overlapping subnodes
+  assert.equal(rebased.nodes.find((n) => n.id === "chest.a.exit").y, 792);
+  // Legacy direct edges replaced by subalgorithm edges, while custom edge kept
+  assert.ok(!rebased.edges.some((e) => e.id === "chest.a.yes-exit"));
+  assert.ok(!rebased.edges.some((e) => e.id === "chest.a.no-exit"));
+  assert.ok(rebased.edges.some((e) => e.id === "chest.a.yes-subq"));
+  assert.ok(rebased.edges.some((e) => e.id === "chest.a.subq-subyes"));
+  assert.ok(rebased.edges.some((e) => e.id === "chest.a.no-alt"));
+  assert.ok(rebased.edges.some((e) => e.id === "custom-edge-99"));
 });
 
 test("canvas keyboard navigation: Tab/Shift+Tab node cycling logic", () => {
   const g = M.defaults().graphs["chest.a"];
   const nodes = g.nodes;
-  assert.equal(nodes.length, 7);
+  assert.equal(nodes.length, 11);
 
-  // When no node is selected (-1), Tab selects 0, Shift+Tab selects last (6)
+  // When no node is selected (-1), Tab selects 0, Shift+Tab selects last (10)
   const tabFromNone = (currentIndex, shift) =>
     currentIndex === -1 ? (shift ? nodes.length - 1 : 0) : (currentIndex + (shift ? -1 : 1) + nodes.length) % nodes.length;
 
   assert.equal(tabFromNone(-1, false), 0);
-  assert.equal(tabFromNone(-1, true), 6);
+  assert.equal(tabFromNone(-1, true), 10);
 
   // Cycling forward
   let idx = 0;
-  for (let i = 1; i <= 7; i++) {
+  for (let i = 1; i <= 11; i++) {
     idx = tabFromNone(idx, false);
-    assert.equal(idx, i % 7);
+    assert.equal(idx, i % 11);
   }
 
   // Cycling backward
   idx = 0;
-  assert.equal(tabFromNone(idx, true), 6);
-  assert.equal(tabFromNone(6, true), 5);
+  assert.equal(tabFromNone(idx, true), 10);
+  assert.equal(tabFromNone(10, true), 9);
 });
 
 test("canvas keyboard navigation: Arrow nudging step and boundary limits", () => {
@@ -305,7 +381,7 @@ test("layout(): arranges standard pathway hierarchically with descending Y coord
   });
 
   const res = M.layout(g, { anchorX: 260, dx: 260, dy: 152 });
-  assert.equal(res.nodes.length, 7);
+  assert.equal(res.nodes.length, 11);
 
   // Root node should be at layer 0 (y = 0)
   const root = res.nodes.find((n) => n.id === "chest.a.start");
@@ -844,6 +920,16 @@ test("pharmacology: emergencyDoses() calculates exact adult vs pediatric doses",
   assert.equal(adult.midazolamSeizures.doseMg, 10); // clamped at 10
   assert.ok(adult.fluidResuscitation.doseDescription.includes("2100 ml"));
 
+  // New adult emergency drugs
+  assert.equal(adult.adenosineSVT.doseMgFirst, 6);
+  assert.equal(adult.adenosineSVT.doseMgSecond, 12);
+  assert.equal(adult.levetiracetamSeizures.doseMg, 2800);
+  assert.equal(adult.tranexamicAcidTrauma.doseMg, 1000);
+  assert.ok(adult.calciumGluconateHyperkalemia.doseDescription.includes("10-20 ml"));
+  assert.ok(adult.insulinGlucoseHyperkalemia.doseDescription.includes("10 j."));
+  assert.equal(adult.naloxonePoisoning.doseMgFirst, 0.4);
+  assert.equal(adult.magnesiumSulfateEmergency.doseMg, 2000);
+
   // Child 15 kg
   const child = P.emergencyDoses(15, true);
   assert.equal(child.isChild, true);
@@ -856,6 +942,16 @@ test("pharmacology: emergencyDoses() calculates exact adult vs pediatric doses",
   assert.equal(child.atropineBradycardia.doseMg, 0.3);
   assert.equal(child.midazolamSeizures.doseMg, 3.0);
   assert.ok(child.fluidResuscitation.doseDescription.includes("300 ml"));
+
+  // New child emergency drugs
+  assert.equal(child.adenosineSVT.doseMgFirst, 1.5);
+  assert.equal(child.adenosineSVT.doseMgSecond, 3.0);
+  assert.equal(child.levetiracetamSeizures.doseMg, 750); // 15 * 50 = 750
+  assert.equal(child.tranexamicAcidTrauma.doseMg, 225); // 15 * 15 = 225
+  assert.ok(child.calciumGluconateHyperkalemia.doseDescription.includes("7.5 ml/kg"));
+  assert.ok(child.insulinGlucoseHyperkalemia.doseDescription.includes("0.1 j./kg"));
+  assert.equal(child.naloxonePoisoning.doseMgFirst, 0.15);
+  assert.equal(child.magnesiumSulfateEmergency.doseMg, 600); // 15 * 40 = 600
 });
 
 test("pharmacology: hollidaySegar() calculates daily, hourly, and drop rates across all tiers", () => {
