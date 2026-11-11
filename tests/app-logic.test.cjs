@@ -1236,6 +1236,81 @@ test("diagnostics: evaluateABG() evaluates acid-base disturbance and Berlin ARDS
   assert.ok(abg2.ardsSeverity.includes("Ciężki ARDS"));
 });
 
+test("diagnostics: matchDiagnosticToBranch() accurately routes outgoing branches for POCUS and acute labs", () => {
+  const outgoing = [
+    { id: "e1", from: "n1", to: "n_urgent", label: "DODATNI eFAST / Pilna interwencja chirurgiczna" },
+    { id: "e2", from: "n1", to: "n_obs", label: "Ujemny eFAST — obserwacja / TK jamy brzusznej" },
+  ];
+
+  // 1. eFAST positive (Morison fluid) -> e1
+  const posEfast = Diag.evaluateEFAST({ ruq: "fluid" });
+  const matchedEfastPos = Diag.matchDiagnosticToBranch("efast", posEfast, outgoing);
+  assert.equal(matchedEfastPos.id, "e1");
+
+  // 2. eFAST negative -> e2
+  const negEfast = Diag.evaluateEFAST({});
+  const matchedEfastNeg = Diag.matchDiagnosticToBranch("efast", negEfast, outgoing);
+  assert.equal(matchedEfastNeg.id, "e2");
+
+  // 3. BLUE Protocol
+  const blueEdges = [
+    { id: "b_ptx", from: "n2", to: "n_ptx", label: "Profil A' — podejrzenie odmy opłucnowej" },
+    { id: "b_edema", from: "n2", to: "n_edema", label: "Profil B — obrzęk płuc" },
+    { id: "b_norm", from: "n2", to: "n_norm", label: "Profil A — prawidłowy ślizg opłucnej / ZP" },
+  ];
+  const bluePtx = Diag.evaluateBLUE({ profileType: "A", lungSliding: false, lungPoint: true });
+  assert.equal(Diag.matchDiagnosticToBranch("blue", bluePtx, blueEdges).id, "b_ptx");
+
+  const blueEdema = Diag.evaluateBLUE({ profileType: "B", lungSliding: true });
+  assert.equal(Diag.matchDiagnosticToBranch("blue", blueEdema, blueEdges).id, "b_edema");
+
+  const blueNorm = Diag.evaluateBLUE({ profileType: "A", lungSliding: true });
+  assert.equal(Diag.matchDiagnosticToBranch("blue", blueNorm, blueEdges).id, "b_norm");
+
+  // 4. FOCUS & DVT CUS
+  const focusEdges = [
+    { id: "f_tamp", from: "n3", to: "n_tamp", label: "Tamponada serca — pilna perikardiocenteza" },
+    { id: "f_norm", from: "n3", to: "n_norm", label: "Brak płynu w osierdziu — stan stabilny" },
+  ];
+  const tamp = Diag.evaluateFOCUS({ pericardialEffusion: "tamponade" });
+  assert.equal(Diag.matchDiagnosticToBranch("focus", tamp, focusEdges).id, "f_tamp");
+  const normFocus = Diag.evaluateFOCUS({});
+  assert.equal(Diag.matchDiagnosticToBranch("focus", normFocus, focusEdges).id, "f_norm");
+
+  // 5. hs-cTn ESC 0/1h kinetics
+  const ctnEdges = [
+    { id: "c_ri", from: "n4", to: "n_angio", label: "Rule-in OZW — pilna koronarografia" },
+    { id: "c_ro", from: "n4", to: "n_disch", label: "Rule-out — wykluczenie zawału NSTEMI" },
+    { id: "c_obs", from: "n4", to: "n_obs", label: "Obserwacja 0/3h" },
+  ];
+  const ri = Diag.evaluateHsTroponin({ assay: "hs-cTnT", ctn0: 60 });
+  assert.equal(Diag.matchDiagnosticToBranch("troponin", ri, ctnEdges).id, "c_ri");
+  const ro = Diag.evaluateHsTroponin({ assay: "hs-cTnT", ctn0: 4 });
+  assert.equal(Diag.matchDiagnosticToBranch("troponin", ro, ctnEdges).id, "c_ro");
+  const obs = Diag.evaluateHsTroponin({ assay: "hs-cTnT", ctn0: 15, ctn1: 17, deltaHours: 1 });
+  assert.equal(Diag.matchDiagnosticToBranch("troponin", obs, ctnEdges).id, "c_obs");
+
+  // 6. ABG Gazometria
+  const abgEdges = [
+    { id: "a_sev", from: "n5", to: "n_icu", label: "Ciężka kwasica / niewydolność oddechowa — OIT" },
+    { id: "a_stab", from: "n5", to: "n_ward", label: "Stabilna wymiana gazowa — tlenoterapia bierna" },
+  ];
+  const severeAbg = Diag.evaluateABG({ ph: 7.12, pco2: 65, po2: 50, hco3: 20, fio2: 0.21 });
+  assert.equal(Diag.matchDiagnosticToBranch("abg", severeAbg, abgEdges).id, "a_sev");
+  const mildAbg = Diag.evaluateABG({ ph: 7.38, pco2: 42, po2: 95, hco3: 24, fio2: 0.21 });
+  assert.equal(Diag.matchDiagnosticToBranch("abg", mildAbg, abgEdges).id, "a_stab");
+
+  // 7. Age-adjusted D-dimer
+  const dimerEdges = [
+    { id: "d_pos", from: "n6", to: "n_angio", label: "D-dimer dodatni — wskazana angio-TK" },
+    { id: "d_neg", from: "n6", to: "n_disch", label: "D-dimer ujemny — wykluczenie ZP" },
+  ];
+  const dPos = Diag.evaluateAgeAdjustedDdimer({ age: 70, ddimer: 850 });
+  assert.equal(Diag.matchDiagnosticToBranch("ddimer", dPos, dimerEdges).id, "d_pos");
+  const dNeg = Diag.evaluateAgeAdjustedDdimer({ age: 70, ddimer: 600 });
+  assert.equal(Diag.matchDiagnosticToBranch("ddimer", dNeg, dimerEdges).id, "d_neg");
+});
+
 test("visit session & SOAP report: integrates diagnostics into [O] Objective and [A] Assessment", () => {
   function formatSOAPWithDiagnostics(diagnosticsItems) {
     const lines = [];

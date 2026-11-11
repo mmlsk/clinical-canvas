@@ -1880,6 +1880,78 @@ dialog .source-line {
   color: #137333;
 }
 
+/* Inline Diagnostic Widget in Node Panel */
+.inline-diag-box {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #ffffff;
+  border: 1px solid #c8d9ed;
+  border-radius: 4px;
+}
+.inline-diag-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #1a4d80;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.inline-diag-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.inline-diag-preset-btn {
+  font-size: 11px;
+  padding: 3px 7px;
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.inline-diag-preset-btn:hover {
+  background: #2f70bb;
+  color: #fff;
+  border-color: #2f70bb;
+}
+.inline-diag-preset-btn.active {
+  background: #2f70bb;
+  color: #fff;
+  border-color: #1a4d80;
+  font-weight: 600;
+}
+.inline-diag-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  margin-bottom: 8px;
+}
+.inline-diag-inputs input,
+.inline-diag-inputs select {
+  padding: 2px 4px;
+  font-size: 11.5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+}
+.inline-diag-apply-btn {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: #2f70bb;
+  color: #ffffff;
+  border: 1px solid #1a4d80;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+.inline-diag-apply-btn:hover {
+  background: #1a4d80;
+}
+
 @media (max-width: 720px) {
   #diagnostics-dialog {
     padding: 16px;

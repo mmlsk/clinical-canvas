@@ -376,6 +376,91 @@
     };
   }
 
+  // --- 8. Decision Support: Score & Diagnostic to Branch Matcher ---
+  function matchDiagnosticToBranch(diagKey, res, outgoingEdges) {
+    if (!outgoingEdges || !outgoingEdges.length || !res) return null;
+    const key = String(diagKey || "").toLowerCase();
+
+    if (key.includes("efast")) {
+      if (res.hasTamponade) {
+        return outgoingEdges.find((e) => /tamponad|perikard|odbarcz|piln|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|dodatn|piln/i.test(e.label || ""));
+      }
+      if (res.hasPneumothorax) {
+        return outgoingEdges.find((e) => /odm|drenaż|nakłu|piln|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|dodatn|piln/i.test(e.label || ""));
+      }
+      if (res.fluidSites && res.fluidSites.length) {
+        return outgoingEdges.find((e) => /płyn|krwaw|laparotom|piln|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|dodatn|piln/i.test(e.label || ""));
+      }
+      return outgoingEdges.find((e) => /\bnie\b|ujemn|brak|stabiln|tk|obserwac/i.test(e.label || ""));
+    }
+
+    if (key.includes("blue")) {
+      const isPtx = res.profile === "A_prime" || (res.primaryDiagnosis && res.primaryDiagnosis.toLowerCase().includes("odma"));
+      if (isPtx) {
+        return outgoingEdges.find((e) => /odm|drenaż|nakłu|a['’_]|piln|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|piln/i.test(e.label || ""));
+      }
+      const isEdema = res.profile === "B" || (res.primaryDiagnosis && res.primaryDiagnosis.toLowerCase().includes("obrzęk"));
+      if (isEdema) {
+        return outgoingEdges.find((e) => /obrzęk|sercow|niewydolnoś|cpap|\bb\b|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|piln/i.test(e.label || ""));
+      }
+      if (res.profile === "B_prime" || res.profile === "C") {
+        return outgoingEdges.find((e) => /zapaleni|antybiotyk|konsolidac|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|piln/i.test(e.label || ""));
+      }
+      return outgoingEdges.find((e) => {
+        const lbl = (e.label || "").toLowerCase();
+        // Match Profil A or normal, avoiding Profil A'
+        if (/a['’_]/.test(lbl)) return false;
+        return /prawidłow|astm|pochp|zator|profil a\b|\bnie\b|ujemn/.test(lbl);
+      });
+    }
+
+    if (key.includes("focus")) {
+      if (res.hasTamponade || res.hasRVStrain || res.hasDVT) {
+        return outgoingEdges.find((e) => /tamponad|zator|przeciąż|dvt|odbarcz|piln|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|dodatn|piln/i.test(e.label || ""));
+      }
+      return outgoingEdges.find((e) => /\bnie\b|ujemn|brak|stabiln/i.test(e.label || ""));
+    }
+
+    if (key.includes("troponin") || key.includes("ctn")) {
+      if (res.category === "rule_in") {
+        return outgoingEdges.find((e) => /zawał|\bacs\b|ozw|rule-in|dodatn|angio|koronar|piln|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|dodatn/i.test(e.label || ""));
+      }
+      if (res.category === "rule_out") {
+        return outgoingEdges.find((e) => /rule-out|wyklucz|niski|wypis|\bnie\b|ujemn/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\bnie\b|ujemn/i.test(e.label || ""));
+      }
+      return outgoingEdges.find((e) => /obserwac|0\/2h|0\/3h|niejednoznaczn/i.test(e.label || ""));
+    }
+
+    if (key.includes("abg") || key.includes("gazometri")) {
+      const isSevere = res.ph < 7.20 || res.pfRatio < 200 || res.pco2 > 55;
+      if (isSevere) {
+        return outgoingEdges.find((e) => /kwasic|niewydolnoś|intubac|respirat|oiom|piln|ciężk|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|dodatn/i.test(e.label || ""));
+      }
+      return outgoingEdges.find((e) => /\bnie\b|prawidłow|stabiln|tlen/i.test(e.label || ""));
+    }
+
+    if (key.includes("ddimer") || key.includes("dimer")) {
+      if (res.isElevated) {
+        return outgoingEdges.find((e) => /dodatn|angio|tkpa|wysok|\btak\b/i.test(e.label || "")) ||
+               outgoingEdges.find((e) => /\btak\b|dodatn/i.test(e.label || ""));
+      }
+      return outgoingEdges.find((e) => /ujemn|wyklucz|niski|\bnie\b/i.test(e.label || "")) ||
+             outgoingEdges.find((e) => /\bnie\b|ujemn/i.test(e.label || ""));
+    }
+
+    return null;
+  }
+
   return {
     evaluateEFAST,
     evaluateBLUE,
@@ -384,5 +469,6 @@
     evaluateAgeAdjustedDdimer,
     evaluateLactateClearance,
     evaluateABG,
+    matchDiagnosticToBranch,
   };
 });

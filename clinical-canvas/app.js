@@ -2707,6 +2707,227 @@
       renderPanel();
       if (walkthroughActive) renderWalkthrough();
     }
+
+    // Diagnostics Preset Buttons
+    const presetBtn = ev.target.closest("[data-diag-preset]");
+    if (presetBtn) {
+      const diagKey = presetBtn.dataset.diagPreset;
+      const val = presetBtn.dataset.val;
+
+      if (diagKey === "efast") {
+        if (val === "normal") {
+          Object.keys(efastState).forEach((k) => (efastState[k] = "normal"));
+        } else if (val === "morison") {
+          Object.keys(efastState).forEach((k) => (efastState[k] = "normal"));
+          efastState.ruq = "fluid";
+        } else if (val === "ptx") {
+          Object.keys(efastState).forEach((k) => (efastState[k] = "normal"));
+          efastState.pleuralRight = "pneumothorax";
+        } else if (val === "tamponade") {
+          Object.keys(efastState).forEach((k) => (efastState[k] = "normal"));
+          efastState.pericardial = "tamponade";
+        }
+      } else if (diagKey === "blue") {
+        blueState.profileType = val;
+        if (val === "A_prime") {
+          blueState.lungSliding = false;
+          blueState.lungPoint = true;
+        } else if (val === "B_prime") {
+          blueState.lungSliding = false;
+          blueState.lungPoint = false;
+        } else {
+          blueState.lungSliding = true;
+          blueState.lungPoint = false;
+        }
+      } else if (diagKey === "focus") {
+        if (val === "normal") {
+          focusState.pericardialEffusion = "none";
+          focusState.rvEnlargement = false;
+          focusState.dvtFemoral = "compressible";
+          focusState.dvtPopliteal = "compressible";
+          focusState.ivcDiameterMm = 16;
+          focusState.ivcCollapsibility = 65;
+        } else if (val === "tamponade") {
+          focusState.pericardialEffusion = "large_tamponade";
+          focusState.ivcDiameterMm = 26;
+          focusState.ivcCollapsibility = 10;
+        } else if (val === "rvstrain") {
+          focusState.rvEnlargement = true;
+          focusState.ivcDiameterMm = 24;
+          focusState.ivcCollapsibility = 20;
+        } else if (val === "dvt") {
+          focusState.dvtFemoral = "non_compressible";
+          focusState.dvtPopliteal = "non_compressible";
+        }
+      } else if (diagKey === "troponin") {
+        if (val === "ruleout") {
+          labState.cTn0 = 3;
+          labState.cTn1 = 3;
+        } else if (val === "observe") {
+          labState.cTn0 = 14;
+          labState.cTn1 = 16;
+        } else if (val === "rulein") {
+          labState.cTn0 = 45;
+          labState.cTn1 = 65;
+        }
+      } else if (diagKey === "abg") {
+        if (val === "normal") {
+          labState.abgPh = 7.40;
+          labState.abgPco2 = 40;
+          labState.abgPo2 = 92;
+          labState.abgHco3 = 24;
+          labState.abgFio2 = 0.21;
+        } else if (val === "acidosis") {
+          labState.abgPh = 7.15;
+          labState.abgPco2 = 26;
+          labState.abgPo2 = 94;
+          labState.abgHco3 = 9;
+          labState.abgFio2 = 0.21;
+        } else if (val === "hypercapnia") {
+          labState.abgPh = 7.22;
+          labState.abgPco2 = 68;
+          labState.abgPo2 = 56;
+          labState.abgHco3 = 28;
+          labState.abgFio2 = 0.28;
+        } else if (val === "hypoxemia") {
+          labState.abgPh = 7.36;
+          labState.abgPco2 = 42;
+          labState.abgPo2 = 55;
+          labState.abgHco3 = 24;
+          labState.abgFio2 = 0.50;
+        }
+      } else if (diagKey === "ddimer") {
+        if (val === "normal") {
+          labState.dDimerVal = 320;
+        } else if (val === "elevated") {
+          labState.dDimerVal = 850;
+        }
+      }
+
+      renderPanel();
+      return;
+    }
+
+    // Diagnostics Inline Apply Button
+    const diagApplyBtn = ev.target.closest("[data-inline-diag-apply]");
+    if (diagApplyBtn) {
+      const diagKey = diagApplyBtn.dataset.inlineDiagApply;
+      const D = (typeof window !== "undefined" && window.ClinicalDiagnostics) || (typeof globalThis !== "undefined" && globalThis.ClinicalDiagnostics);
+      if (!D) return;
+
+      const ctn0El = $("inline-ctn-0");
+      const ctn1El = $("inline-ctn-1");
+      if (ctn0El) labState.cTn0 = parseFloat(ctn0El.value) || labState.cTn0;
+      if (ctn1El) labState.cTn1 = parseFloat(ctn1El.value) || labState.cTn1;
+
+      const phEl = $("inline-abg-ph");
+      const pco2El = $("inline-abg-pco2");
+      const po2El = $("inline-abg-po2");
+      const hco3El = $("inline-abg-hco3");
+      const fio2El = $("inline-abg-fio2");
+      if (phEl) labState.abgPh = parseFloat(phEl.value) || labState.abgPh;
+      if (pco2El) labState.abgPco2 = parseFloat(pco2El.value) || labState.abgPco2;
+      if (po2El) labState.abgPo2 = parseFloat(po2El.value) || labState.abgPo2;
+      if (hco3El) labState.abgHco3 = parseFloat(hco3El.value) || labState.abgHco3;
+      if (fio2El) labState.abgFio2 = parseFloat(fio2El.value) || labState.abgFio2;
+
+      let item = null;
+      let evalRes = null;
+
+      if (diagKey === "efast") {
+        evalRes = D.evaluateEFAST(efastState);
+        item = {
+          type: "POCUS",
+          title: "Protokół eFAST",
+          summary: evalRes.summary,
+          action: evalRes.action,
+          isPositive: evalRes.isPositive,
+          alert: evalRes.hasTamponade || evalRes.hasPneumothorax,
+        };
+      } else if (diagKey === "blue") {
+        evalRes = D.evaluateBLUE(blueState);
+        item = {
+          type: "POCUS",
+          title: "Protokół BLUE",
+          summary: `Profil ${evalRes.profile}: ${evalRes.primaryDiagnosis}`,
+          action: evalRes.action,
+          isPositive: evalRes.profile !== "A",
+          alert: evalRes.alert,
+        };
+      } else if (diagKey === "focus") {
+        evalRes = D.evaluateFOCUS(focusState);
+        item = {
+          type: "POCUS",
+          title: "FOCUS & DVT CUS",
+          summary: evalRes.summary,
+          action: evalRes.action,
+          isPositive: evalRes.hasTamponade || evalRes.hasRVStrain || evalRes.hasDVT,
+          alert: evalRes.alert,
+        };
+      } else if (diagKey === "troponin") {
+        evalRes = D.evaluateHsTroponin({
+          assay: labState.cTnAssay,
+          ctn0: labState.cTn0,
+          ctn1: labState.cTn1,
+          deltaHours: 1,
+        });
+        item = {
+          type: "LAB",
+          title: `Kinetyka hs-cTn (${evalRes.assay || labState.cTnAssay})`,
+          summary: `${evalRes.summary} (0h: ${labState.cTn0} ng/L, 1h: ${labState.cTn1} ng/L)`,
+          action: evalRes.recommendation,
+          isPositive: evalRes.category === "rule_in",
+          alert: evalRes.category === "rule_in",
+        };
+      } else if (diagKey === "abg") {
+        evalRes = D.evaluateABG({
+          ph: labState.abgPh,
+          pco2: labState.abgPco2,
+          po2: labState.abgPo2,
+          hco3: labState.abgHco3,
+          fio2: labState.abgFio2,
+        });
+        item = {
+          type: "LAB",
+          title: "Gazometria (ABG) & P/F",
+          summary: evalRes.interpretation,
+          action: evalRes.ardsSeverity,
+          isPositive: evalRes.ph < 7.35 || evalRes.ph > 7.45 || evalRes.pfRatio < 300,
+          alert: evalRes.ph < 7.20 || evalRes.pfRatio <= 200,
+        };
+      } else if (diagKey === "ddimer") {
+        evalRes = D.evaluateAgeAdjustedDdimer({
+          age: labState.dDimerAge,
+          ddimer: labState.dDimerVal,
+        });
+        item = {
+          type: "LAB",
+          title: "Age-adjusted D-dimer",
+          summary: evalRes.interpretation,
+          action: evalRes.recommendation,
+          isPositive: evalRes.isElevated,
+          alert: evalRes.isElevated,
+        };
+      }
+
+      if (item) {
+        addDiagnosticRecord(item);
+
+        const g = visibleGraphs()[0];
+        const outgoing = g ? g.edges.filter((e) => e.from === selected?.id) : [];
+        const matched = D.matchDiagnosticToBranch(diagKey, evalRes, outgoing);
+        if (matched) {
+          activeBranch = matched.id;
+          toast(`Dopasowano gałąź: ${matched.label || "Kolejny krok"}`);
+        } else {
+          toast(`Zastosowano badanie: ${item.title}`);
+        }
+
+        draw();
+        renderPanel();
+        if (walkthroughActive) renderWalkthrough();
+      }
+    }
   });
 
   // --- Clinical Pharmacology & Emergency Therapeutics Suite ---
@@ -3560,17 +3781,128 @@
         </div>
         <div class="tile-diag-list">
           ${items.map((item) => {
-            const isRecorded = visitSession.diagnostics.some((d) => d.title === item.title);
-            return `
-              <div class="tile-diag-item">
-                <div>
-                  <strong>[${escape(item.type)}] ${escape(item.title)}</strong>: <span style="color:#555">${escape(item.summary)}</span>
-                </div>
-                <div style="display:flex;gap:6px;">
-                  <button type="button" class="tile-diag-add-btn ${isRecorded ? "added" : ""}" data-diag-title="${escape(item.title)}" data-diag-tab="${escape(item.tab)}" data-action="open-diag">
-                    ${isRecorded ? "W karcie" : "Zbadaj →"}
+            const isRecorded = visitSession.diagnostics.some((d) => d.title === item.title || d.title.includes(item.title));
+            let widgetHTML = "";
+
+            if (item.title === "Protokół eFAST") {
+              const isMorison = efastState.ruq === "fluid";
+              const isPtx = efastState.pleuralRight === "pneumothorax" || efastState.pleuralLeft === "pneumothorax";
+              const isTamp = efastState.pericardial === "tamponade";
+              const isNormal = !isMorison && !isPtx && !isTamp && Object.values(efastState).every((v) => v === "normal");
+
+              widgetHTML = `
+                <div class="inline-diag-box">
+                  <div class="inline-diag-label">Szybki protokół eFAST:</div>
+                  <div class="inline-diag-presets">
+                    <button type="button" class="inline-diag-preset-btn ${isNormal ? "active" : ""}" data-diag-preset="efast" data-val="normal">Norma (ujemny)</button>
+                    <button type="button" class="inline-diag-preset-btn ${isMorison ? "active" : ""}" data-diag-preset="efast" data-val="morison">+ Płyn Morison</button>
+                    <button type="button" class="inline-diag-preset-btn ${isPtx ? "active" : ""}" data-diag-preset="efast" data-val="ptx">! Odma opłucnowa</button>
+                    <button type="button" class="inline-diag-preset-btn ${isTamp ? "active" : ""}" data-diag-preset="efast" data-val="tamponade">! Tamponada osierdzia</button>
+                  </div>
+                  <button type="button" class="inline-diag-apply-btn" data-inline-diag-apply="efast">
+                    Zastosuj eFAST i dopasuj gałąź schematu
                   </button>
+                </div>`;
+            } else if (item.title === "Protokół BLUE") {
+              const prof = blueState.profileType;
+              widgetHTML = `
+                <div class="inline-diag-box">
+                  <div class="inline-diag-label">Profil płucny BLUE (Lichtenstein):</div>
+                  <div class="inline-diag-presets">
+                    <button type="button" class="inline-diag-preset-btn ${prof === "A" ? "active" : ""}" data-diag-preset="blue" data-val="A">Profil A (Norma / ZP)</button>
+                    <button type="button" class="inline-diag-preset-btn ${prof === "B" ? "active" : ""}" data-diag-preset="blue" data-val="B">Profil B (Obrzęk płuc)</button>
+                    <button type="button" class="inline-diag-preset-btn ${prof === "A_prime" ? "active" : ""}" data-diag-preset="blue" data-val="A_prime">Profil A' (Odma)</button>
+                    <button type="button" class="inline-diag-preset-btn ${prof === "B_prime" ? "active" : ""}" data-diag-preset="blue" data-val="B_prime">Profil B' (Zapalenie)</button>
+                    <button type="button" class="inline-diag-preset-btn ${prof === "C" ? "active" : ""}" data-diag-preset="blue" data-val="C">Profil C (Konsolidacja)</button>
+                  </div>
+                  <button type="button" class="inline-diag-apply-btn" data-inline-diag-apply="blue">
+                    Zastosuj profil BLUE i dopasuj gałąź
+                  </button>
+                </div>`;
+            } else if (item.title === "FOCUS & DVT CUS") {
+              const isTamp = focusState.pericardialEffusion === "tamponade" || focusState.pericardialEffusion === "large_tamponade";
+              const isRv = focusState.rvEnlargement === true;
+              const isDvt = focusState.dvtFemoral === "non_compressible" || focusState.dvtPopliteal === "non_compressible";
+              const isNorm = !isTamp && !isRv && !isDvt;
+
+              widgetHTML = `
+                <div class="inline-diag-box">
+                  <div class="inline-diag-label">Echokardiografia FOCUS & DVT CUS:</div>
+                  <div class="inline-diag-presets">
+                    <button type="button" class="inline-diag-preset-btn ${isNorm ? "active" : ""}" data-diag-preset="focus" data-val="normal">Norma (IVC <21mm)</button>
+                    <button type="button" class="inline-diag-preset-btn ${isTamp ? "active" : ""}" data-diag-preset="focus" data-val="tamponade">! Tamponada (worek + IVC)</button>
+                    <button type="button" class="inline-diag-preset-btn ${isRv ? "active" : ""}" data-diag-preset="focus" data-val="rvstrain">! Przeciążenie RV</button>
+                    <button type="button" class="inline-diag-preset-btn ${isDvt ? "active" : ""}" data-diag-preset="focus" data-val="dvt">+ Zakrzepica DVT</button>
+                  </div>
+                  <button type="button" class="inline-diag-apply-btn" data-inline-diag-apply="focus">
+                    Zastosuj FOCUS i dopasuj gałąź
+                  </button>
+                </div>`;
+            } else if (item.title === "Kinetyka hs-cTn 0/1h") {
+              widgetHTML = `
+                <div class="inline-diag-box">
+                  <div class="inline-diag-label">Kinetyka hs-cTnT (0/1h ESC):</div>
+                  <div class="inline-diag-inputs">
+                    <label>0h: <input type="number" id="inline-ctn-0" value="${labState.cTn0}" min="1" max="10000" style="width:60px"> ng/L</label>
+                    <label>1h: <input type="number" id="inline-ctn-1" value="${labState.cTn1}" min="1" max="10000" style="width:60px"> ng/L</label>
+                  </div>
+                  <div class="inline-diag-presets">
+                    <button type="button" class="inline-diag-preset-btn" data-diag-preset="troponin" data-val="ruleout">Rule-Out (<5 ng/L)</button>
+                    <button type="button" class="inline-diag-preset-btn" data-diag-preset="troponin" data-val="observe">Obserwacja</button>
+                    <button type="button" class="inline-diag-preset-btn" data-diag-preset="troponin" data-val="rulein">Rule-In (≥52 / Δ≥5)</button>
+                  </div>
+                  <button type="button" class="inline-diag-apply-btn" data-inline-diag-apply="troponin">
+                    Zastosuj hs-cTn i dopasuj gałąź
+                  </button>
+                </div>`;
+            } else if (item.title.includes("Gazometria")) {
+              widgetHTML = `
+                <div class="inline-diag-box">
+                  <div class="inline-diag-label">Gazometria tętnicza (ABG) & P/F:</div>
+                  <div class="inline-diag-inputs">
+                    <label>pH: <input type="number" id="inline-abg-ph" value="${labState.abgPh}" step="0.01" style="width:55px"></label>
+                    <label>pCO₂: <input type="number" id="inline-abg-pco2" value="${labState.abgPco2}" step="1" style="width:45px"></label>
+                    <label>PaO₂: <input type="number" id="inline-abg-po2" value="${labState.abgPo2}" step="1" style="width:45px"></label>
+                    <label>HCO₃⁻: <input type="number" id="inline-abg-hco3" value="${labState.abgHco3}" step="1" style="width:45px"></label>
+                    <label>FiO₂: <input type="number" id="inline-abg-fio2" value="${labState.abgFio2}" step="0.05" style="width:45px"></label>
+                  </div>
+                  <div class="inline-diag-presets">
+                    <button type="button" class="inline-diag-preset-btn" data-diag-preset="abg" data-val="normal">Norma (7.40)</button>
+                    <button type="button" class="inline-diag-preset-btn" data-diag-preset="abg" data-val="acidosis">Kwasica metab. (7.15)</button>
+                    <button type="button" class="inline-diag-preset-btn" data-diag-preset="abg" data-val="hypercapnia">Kwasica oddech. (7.22)</button>
+                    <button type="button" class="inline-diag-preset-btn" data-diag-preset="abg" data-val="hypoxemia">ARDS P/F < 150</button>
+                  </div>
+                  <button type="button" class="inline-diag-apply-btn" data-inline-diag-apply="abg">
+                    Zastosuj ABG i dopasuj gałąź
+                  </button>
+                </div>`;
+            } else if (item.title.includes("D-dimer")) {
+              widgetHTML = `
+                <div class="inline-diag-box">
+                  <div class="inline-diag-label">Age-adjusted D-dimer:</div>
+                  <div class="inline-diag-presets">
+                    <button type="button" class="inline-diag-preset-btn" data-diag-preset="ddimer" data-val="normal">Ujemny (< odcięcie)</button>
+                    <button type="button" class="inline-diag-preset-btn" data-diag-preset="ddimer" data-val="elevated">Dodatni (> odcięcie)</button>
+                  </div>
+                  <button type="button" class="inline-diag-apply-btn" data-inline-diag-apply="ddimer">
+                    Zastosuj D-dimer i dopasuj gałąź
+                  </button>
+                </div>`;
+            }
+
+            return `
+              <div class="tile-diag-item" style="flex-direction:column;align-items:stretch;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <div>
+                    <strong>[${escape(item.type)}] ${escape(item.title)}</strong>: <span style="color:#555">${escape(item.summary)}</span>
+                  </div>
+                  <div style="display:flex;gap:6px;">
+                    <button type="button" class="tile-diag-add-btn ${isRecorded ? "added" : ""}" data-diag-title="${escape(item.title)}" data-diag-tab="${escape(item.tab)}" data-action="open-diag">
+                      ${isRecorded ? "W karcie" : "Zbadaj w pracowni →"}
+                    </button>
+                  </div>
                 </div>
+                ${widgetHTML}
               </div>`;
           }).join("")}
         </div>
